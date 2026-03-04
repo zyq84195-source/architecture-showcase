@@ -23,14 +23,16 @@ interface Case {
   tags: string[]
   scale?: string
   investment?: string
+  participants?: string
   start_date?: string
-  case_type?: string
   awards?: string
+  case_type?: string
   sustainable_goal?: string
   demo_significance?: string
   likes_count: number
   reviews_count: number
   created_at: string
+  _raw?: any
 }
 
 interface CaseDetailPageProps {
@@ -52,13 +54,11 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
       setLikesCount(found.likes_count)
     }
 
-    // 检查是否已收藏
     const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
     if (favoriteIds.includes(params.id)) {
       setIsFavorited(true)
     }
 
-    // 加载评论
     const allComments = JSON.parse(localStorage.getItem(`comments_${params.id}`) || '[]')
     setComments(allComments)
   }, [params.id])
@@ -81,6 +81,8 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
   const locationText = Array.isArray(caseData.location) ? caseData.location.join(', ') : caseData.location
   const mainImage = caseData.images.find(img => img.isMain) || caseData.images[0]
   const detailImages = caseData.images.filter(img => !img.isMain)
+
+  const raw = caseData._raw || {}
 
   const handleLike = () => {
     setIsLiked(!isLiked)
@@ -178,8 +180,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             <h1 className="text-4xl font-bold text-heading mb-4 flex-1">
               {caseData.title}
             </h1>
-            {/* 操作按钮 */}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-4">
               <button
                 onClick={handleFavorite}
                 className={`px-4 py-2 rounded-lg font-medium transition-all ${
@@ -190,36 +191,26 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
               >
                 {isFavorited ? '❤️ 已收藏' : '🤍 收藏'}
               </button>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">👤</span>
-              <span className="text-gray-700">{caseData.architect}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">📍</span>
-              <span className="text-gray-700">{locationText}</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleLike}
-                className="flex items-center gap-1.5 hover:text-red-500 transition-colors"
-              >
-                <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
-                  {isLiked ? '❤' : '🤍'}
-                </span>
-                <span>{likesCount}</span>
-              </button>
-              <div className="flex items-center gap-1.5 text-gray-500">
-                <span className="text-blue-400">💬</span>
-                <span>{reviews_count}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLike}
+                  className="flex items-center gap-1.5 hover:text-red-500 transition-colors"
+                >
+                  <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
+                    {isLiked ? '❤' : '🤍'}
+                  </span>
+                  <span>{likesCount}</span>
+                </button>
+                <div className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-blue-400">💬</span>
+                  <span>{caseData.reviews_count}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 主图片 */}
+        {/* 主图 */}
         {mainImage && (
           <div className="max-w-6xl mx-auto mb-12">
             <div className="elegant-card p-4">
@@ -237,83 +228,159 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
           </div>
         )}
 
-        {/* 项目介绍 */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <h2 className="text-2xl font-bold text-heading mb-4">项目介绍</h2>
-          <div className="elegant-card p-6">
-            <p className="text-body leading-relaxed whitespace-pre-line">
-              {caseData.description}
-            </p>
-          </div>
-        </div>
+        {/* 完整详细信息 */}
+        <div className="max-w-4xl mx-auto space-y-8">
+          {/* 所在区位 */}
+          {caseData.location && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">所在区位</h2>
+              <p className="text-body">{locationText}</p>
+            </div>
+          )}
 
-        {/* 详细信息 */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <h2 className="text-2xl font-bold text-heading mb-6">详细信息</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {caseData.scale && (
-              <div className="elegant-card p-4">
-                <div className="text-sm text-gray-500 mb-1">项目规模</div>
-                <div className="text-body whitespace-pre-line">{caseData.scale}</div>
-              </div>
-            )}
-            {caseData.investment && (
-              <div className="elegant-card p-4">
-                <div className="text-sm text-gray-500 mb-1">总投资额</div>
-                <div className="text-body whitespace-pre-line">{caseData.investment}</div>
-              </div>
-            )}
-            {caseData.start_date && (
-              <div className="elegant-card p-4">
-                <div className="text-sm text-gray-500 mb-1">起止时间</div>
-                <div className="text-body whitespace-pre-line">{caseData.start_date}</div>
-              </div>
-            )}
-            {caseData.case_type && (
-              <div className="elegant-card p-4">
-                <div className="text-sm text-gray-500 mb-1">案例类型</div>
-                <div className="text-body whitespace-pre-line">{caseData.case_type}</div>
-              </div>
-            )}
-          </div>
-        </div>
+          {/* 参与主体 */}
+          {caseData.participants && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">参与主体</h2>
+              <p className="text-body whitespace-pre-line">{caseData.participants}</p>
+            </div>
+          )}
 
-        {/* 更多图片 */}
-        {detailImages.length > 0 && (
-          <div className="max-w-6xl mx-auto mb-12">
-            <h2 className="text-2xl font-bold text-heading mb-6">更多图片</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {detailImages.map((img, index) => (
-                <div key={img.id} className="elegant-card overflow-hidden animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
-                  <img
-                    src={img.url}
-                    alt={img.caption || `图片 ${img.order}`}
-                    className="w-full"
-                    loading="lazy"
-                  />
-                  {img.caption && (
-                    <div className="p-4 border-t border-gray-100">
-                      <p className="text-sm text-gray-600 italic">{img.caption}</p>
-                    </div>
-                  )}
-                </div>
+          {/* 项目介绍 */}
+          {caseData.description && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">项目介绍</h2>
+              <p className="text-body leading-relaxed whitespace-pre-line">
+                {caseData.description}
+              </p>
+            </div>
+          )}
+
+          {/* 项目规模 */}
+          {caseData.scale && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">项目规模</h2>
+              <p className="text-body whitespace-pre-line">{caseData.scale}</p>
+            </div>
+          )}
+
+          {/* 总投资额 */}
+          {caseData.investment && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">总投资额</h2>
+              <p className="text-body whitespace-pre-line">{caseData.investment}</p>
+            </div>
+          )}
+
+          {/* 起止时间 */}
+          {caseData.start_date && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">起止时间</h2>
+              <p className="text-body whitespace-pre-line">{caseData.start_date}</p>
+            </div>
+          )}
+
+          {/* 获奖情况 */}
+          {caseData.awards && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">获奖情况</h2>
+              <p className="text-body whitespace-pre-line">{caseData.awards}</p>
+            </div>
+          )}
+
+          {/* 案例类型 */}
+          {caseData.case_type && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">案例类型</h2>
+              <p className="text-body whitespace-pre-line">{caseData.case_type}</p>
+            </div>
+          )}
+
+          {/* 可持续目标 */}
+          {caseData.sustainable_goal && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">可持续目标</h2>
+              <p className="text-body whitespace-pre-line">{caseData.sustainable_goal}</p>
+            </div>
+          )}
+
+          {/* 示范意义 */}
+          {caseData.demo_significance && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">示范意义</h2>
+              <p className="text-body whitespace-pre-line">{caseData.demo_significance}</p>
+            </div>
+          )}
+
+          {/* 建设阶段 */}
+          {raw['建设阶段'] && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">建设阶段</h2>
+              <p className="text-body whitespace-pre-line">{raw['建设阶段']}</p>
+            </div>
+          )}
+
+          {/* 项目获奖评价 */}
+          {raw['项目获奖评价'] && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">项目获奖评价</h2>
+              <p className="text-body whitespace-pre-line">{raw['项目获奖评价']}</p>
+            </div>
+          )}
+
+          {/* 项目举措 */}
+          {raw['项目举措'] && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">项目举措</h2>
+              <p className="text-body whitespace-pre-line">{raw['项目举措']}</p>
+            </div>
+          )}
+
+          {/* 信息来源 */}
+          {raw['信息来源'] && (
+            <div className="elegant-card p-6">
+              <h2 className="text-2xl font-bold text-heading mb-4">信息来源</h2>
+              <p className="text-body whitespace-pre-line">{raw['信息来源']}</p>
+            </div>
+          )}
+
+          {/* 附图（更多图片） */}
+          {detailImages.length > 0 && (
+            <div>
+              <h2 className="text-2xl font-bold text-heading mb-6">附图</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {detailImages.map((img, index) => (
+                  <div key={img.id} className="elegant-card overflow-hidden animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
+                    <img
+                      src={img.url}
+                      alt={img.caption || `图片 ${img.order}`}
+                      className="w-full"
+                      loading="lazy"
+                    />
+                    {img.caption && (
+                      <div className="p-4 border-t border-gray-100">
+                        <p className="text-sm text-gray-600 italic">{img.caption}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 标签 */}
+          <div>
+            <h2 className="text-2xl font-bold text-heading mb-4">标签</h2>
+            <div className="flex flex-wrap gap-2">
+              {caseData.tags.map((tag: string) => (
+                <span
+                  key={tag}
+                  className="px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-colors"
+                >
+                  {tag}
+                </span>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* 标签 */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <h2 className="text-2xl font-bold text-heading mb-4">标签</h2>
-          <div className="flex flex-wrap gap-2">
-            {caseData.tags.map((tag: string) => (
-              <span
-                key={tag}
-                className="px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-colors"
-              >
-                {tag}
-              </span>
-            ))}
           </div>
         </div>
 
@@ -323,7 +390,6 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             评论 ({comments.length})
           </h2>
 
-          {/* 评论表单 */}
           <div className="elegant-card p-6 mb-6">
             <textarea
               value={newComment}
@@ -343,7 +409,6 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           </div>
 
-          {/* 评论列表 */}
           <div className="space-y-4">
             {comments.length > 0 ? (
               comments.map((comment) => (
