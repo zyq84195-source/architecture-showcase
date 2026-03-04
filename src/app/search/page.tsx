@@ -24,32 +24,39 @@ export default function SearchPage() {
   const [selectedLocation, setSelectedLocation] = useState('')
   const [results, setResults] = useState<Case[]>([])
   const [hasSearched, setHasSearched] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
 
   // 加载案例数据
   const allCases: Case[] = require('@/data/cases.json')
 
   const handleSearch = () => {
-    const filtered = allCases.filter((item: Case) => {
-      const matchesSearch = !searchTerm ||
-        item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-
-      const matchesType = !selectedType ||
-        item.tags.includes(selectedType) ||
-        item.title.includes(selectedType)
-
-      const locationText = Array.isArray(item.location)
-        ? item.location.join(' ')
-        : item.location
-      const matchesLocation = !selectedLocation ||
-        locationText.includes(selectedLocation)
-
-      return matchesSearch && matchesType && matchesLocation
-    })
-
-    setResults(filtered)
+    setIsSearching(true)
     setHasSearched(true)
+
+    // 模拟搜索延迟
+    setTimeout(() => {
+      const filtered = allCases.filter((item: Case) => {
+        const matchesSearch = !searchTerm ||
+          item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+
+        const matchesType = !selectedType ||
+          item.tags.includes(selectedType) ||
+          (item as any).case_type?.includes(selectedType)
+
+        const locationText = Array.isArray(item.location)
+          ? item.location.join(' ')
+          : item.location
+        const matchesLocation = !selectedLocation ||
+          locationText.includes(selectedLocation)
+
+        return matchesSearch && matchesType && matchesLocation
+      })
+
+      setResults(filtered)
+      setIsSearching(false)
+    }, 500)
   }
 
   const handleClear = () => {
@@ -59,6 +66,10 @@ export default function SearchPage() {
     setResults([])
     setHasSearched(false)
   }
+
+  const quickSearchTags = ['城市更新', '文化保护', '历史街区', '社区更新', '可持续发展', '绿色建筑', '宜居', '人文']
+
+  const locationTags = ['北京', '上海', '广州', '深圳', '重庆', '成都', '杭州', '贵阳']
 
   return (
     <div className="min-h-screen bg-elegant-gradient text-foreground">
@@ -101,7 +112,7 @@ export default function SearchPage() {
 
       <main className="container mx-auto px-6 py-12">
         {/* 搜索标题 */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8 animate-fade-in">
           <h1 className="text-4xl font-bold text-heading mb-4">
             搜索建筑案例
           </h1>
@@ -111,13 +122,13 @@ export default function SearchPage() {
         </div>
 
         {/* 搜索框 */}
-        <div className="max-w-4xl mx-auto mb-8">
+        <div className="max-w-4xl mx-auto mb-8 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <div className="elegant-card p-6">
             <div className="space-y-6">
               {/* 关键词搜索 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  关键词
+                  🔍 关键词
                 </label>
                 <div className="relative">
                   <input
@@ -126,11 +137,16 @@ export default function SearchPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder="搜索案例名称、描述、标签..."
-                    className="w-full px-4 py-3 pl-12 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 pl-12 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   />
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                    🔍
-                  </span>
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -138,12 +154,12 @@ export default function SearchPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    案例类型
+                    📁 案例类型
                   </label>
                   <select
                     value={selectedType}
                     onChange={(e) => setSelectedType(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   >
                     <option value="">全部类型</option>
                     <option value="城市更新">城市更新</option>
@@ -156,22 +172,17 @@ export default function SearchPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    地区
+                    📍 地区
                   </label>
                   <select
                     value={selectedLocation}
                     onChange={(e) => setSelectedLocation(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   >
                     <option value="">全部地区</option>
-                    <option value="北京">北京</option>
-                    <option value="上海">上海</option>
-                    <option value="广州">广州</option>
-                    <option value="深圳">深圳</option>
-                    <option value="重庆">重庆</option>
-                    <option value="成都">成都</option>
-                    <option value="杭州">杭州</option>
-                    <option value="贵阳">贵阳</option>
+                    {locationTags.map(loc => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -180,16 +191,17 @@ export default function SearchPage() {
               <div className="flex gap-4">
                 <Button
                   onClick={handleSearch}
+                  disabled={isSearching}
                   className="flex-1 btn-primary-elegant"
                 >
-                  搜索
+                  {isSearching ? '搜索中...' : '🔍 开始搜索'}
                 </Button>
                 <Button
                   onClick={handleClear}
                   variant="outline"
                   className="btn-secondary-elegant"
                 >
-                  清空
+                  🔄 清空
                 </Button>
               </div>
             </div>
@@ -198,13 +210,13 @@ export default function SearchPage() {
 
         {/* 搜索结果 */}
         {hasSearched && (
-          <div>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-heading mb-2">
+          <div className="animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-heading">
                 搜索结果
               </h2>
               <p className="text-body">
-                找到 {results.length} 个相关案例
+                找到 <span className="font-bold text-blue-600">{results.length}</span> 个相关案例
               </p>
             </div>
 
@@ -217,7 +229,7 @@ export default function SearchPage() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
+              <div className="text-center py-12 elegant-card animate-fade-in">
                 <div className="text-6xl mb-4">🔍</div>
                 <h3 className="text-xl font-bold text-heading mb-2">
                   没有找到相关案例
@@ -227,7 +239,7 @@ export default function SearchPage() {
                 </p>
                 <Link href="/cases">
                   <Button className="btn-primary-elegant">
-                    浏览所有案例
+                    📋 浏览所有案例
                   </Button>
                 </Link>
               </div>
@@ -235,24 +247,51 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* 热门标签 */}
+        {/* 热门标签 - 未搜索时显示 */}
         {!hasSearched && (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.3s' }}>
             <h2 className="text-2xl font-bold text-heading mb-6">
               热门标签
             </h2>
             <div className="elegant-card p-6">
               <div className="flex flex-wrap gap-3">
-                {['城市更新', '文化保护', '历史街区', '社区更新', '可持续发展', '绿色建筑', '宜居', '人文'].map((tag) => (
+                {quickSearchTags.map((tag, index) => (
                   <button
                     key={tag}
                     onClick={() => {
                       setSearchTerm(tag)
                       handleSearch()
                     }}
-                    className="px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-colors"
+                    className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-all animate-fade-in"
+                    style={{ animationDelay: `${index * 0.05}s` }}
                   >
                     {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 推荐地区 - 未搜索时显示 */}
+        {!hasSearched && (
+          <div className="max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
+            <h2 className="text-2xl font-bold text-heading mb-6">
+              推荐地区
+            </h2>
+            <div className="elegant-card p-6">
+              <div className="flex flex-wrap gap-3">
+                {locationTags.map((loc, index) => (
+                  <button
+                    key={loc}
+                    onClick={() => {
+                      setSelectedLocation(loc)
+                      handleSearch()
+                    }}
+                    className="px-4 py-2.5 bg-gray-50 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-100 transition-all animate-fade-in"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    📍 {loc}
                   </button>
                 ))}
               </div>

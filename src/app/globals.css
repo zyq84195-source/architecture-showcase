@@ -42,7 +42,13 @@
 /* 优雅的卡片样式 */
 @layer components {
   .elegant-card {
-    @apply bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 hover:border-blue-100;
+    @apply bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 shadow-sm;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .elegant-card:hover {
+    @apply shadow-elegant-hover border-blue-100;
+    transform: translateY(-4px);
   }
 }
 
@@ -50,7 +56,7 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -59,7 +65,8 @@
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: both;
 }
 
 /* 知性阴影系统 */
@@ -73,28 +80,38 @@
 
 /* 优雅的按钮样式 */
 .btn-elegant {
-  @apply px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:scale-105 active:scale-95;
+  @apply px-6 py-2.5 rounded-lg font-medium;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-elegant:hover {
+  transform: scale(1.05);
+}
+
+.btn-elegant:active {
+  transform: scale(0.95);
 }
 
 .btn-primary-elegant {
-  @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-elegant;
+  @apply btn-elegant;
+  @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white;
+  @apply shadow-elegant;
+}
+
+.btn-primary-elegant:hover {
+  @apply from-blue-700 to-blue-800;
+  @apply shadow-elegant-hover;
 }
 
 .btn-secondary-elegant {
-  @apply bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 hover:border-blue-200;
+  @apply btn-elegant;
+  @apply bg-white text-gray-700;
+  @apply border-2 border-gray-200;
 }
 
-/* 知性的排版优化 */
-.text-heading {
-  @apply font-semibold tracking-tight text-gray-900;
-}
-
-.text-subheading {
-  @apply font-medium text-gray-700;
-}
-
-.text-body {
-  @apply text-gray-600 leading-relaxed;
+.btn-secondary-elegant:hover {
+  @apply bg-gray-50;
+  @apply border-blue-300;
 }
 
 /* 优雅的渐变背景 */
@@ -105,6 +122,7 @@
 /* 平滑滚动 */
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 80px; /* 为固定导航栏留出空间 */
 }
 
 /* 自定义滚动条 */
@@ -117,10 +135,94 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: linear-gradient(to bottom, #cbd5e1, #94a3b8);
   border-radius: 4px;
+  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: linear-gradient(to bottom, #94a3b8, #64748b);
+}
+
+/* 星级评分动画 */
+@keyframes starRating {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.star-rating-animate {
+  animation: starRating 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 加载动画 */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* 文本省略 */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 交互效果 */
+.hover-lift {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-8px);
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .text-5xl {
+    @apply text-3xl;
+  }
+  
+  .text-6xl {
+    @apply text-4xl;
+  }
+}
+
+/* 无障碍 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
