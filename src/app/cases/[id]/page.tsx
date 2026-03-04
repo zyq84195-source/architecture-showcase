@@ -31,6 +31,11 @@ interface Case {
   demo_significance?: string
   likes_count: number
   reviews_count: number
+  ratings?: {
+    total: number
+    count: number
+    average: number
+  }
   created_at: string
   _raw?: any
 }
@@ -45,7 +50,9 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
   const [likesCount, setLikesCount] = useState(0)
   const [isFavorited, setIsFavorited] = useState(false)
   const [newComment, setNewComment] = useState('')
-  const [comments, setComments] = useState<Array<{ id: number; user: string; text: string; date: string }>>([])
+  const [comments, setComments] = useState<Array<{ id: number; user: string; text: string; date: string; rating?: number }>>([])
+  const [userRating, setUserRating] = useState<number>(0)
+  const [hasRated, setHasRated] = useState(false)
 
   useEffect(() => {
     const found = cases.find((c: any) => c.id === params.id)
@@ -61,6 +68,13 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
 
     const allComments = JSON.parse(localStorage.getItem(`comments_${params.id}`) || '[]')
     setComments(allComments)
+
+    // 检查用户是否已评分
+    const userRatings = JSON.parse(localStorage.getItem('user_ratings') || '{}')
+    if (userRatings[params.id] !== undefined) {
+      setUserRating(userRatings[params.id])
+      setHasRated(true)
+    }
   }, [params.id])
 
   if (!caseData) {
@@ -78,11 +92,10 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
     )
   }
 
+  const raw = caseData._raw || {}
   const locationText = Array.isArray(caseData.location) ? caseData.location.join(', ') : caseData.location
   const mainImage = caseData.images.find(img => img.isMain) || caseData.images[0]
   const detailImages = caseData.images.filter(img => !img.isMain)
-
-  const raw = caseData._raw || {}
 
   const handleLike = () => {
     setIsLiked(!isLiked)
@@ -102,6 +115,44 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
     }
   }
 
+  const handleRating = (rating: number) => {
+    const user = JSON.parse(localStorage.getItem('currentUser') || 'null')
+    if (!user) {
+      alert('请先登录后再评分')
+      return
+    }
+
+    if (hasRated) {
+      alert('您已经评分过了')
+      return
+    }
+
+    setUserRating(rating)
+    setHasRated(true)
+
+    // 保存用户评分
+    const userRatings = JSON.parse(localStorage.getItem('user_ratings') || '{}')
+    userRatings[caseData.id] = rating
+    localStorage.setItem('user_ratings', JSON.stringify(userRatings))
+
+    // 更新案例评分统计
+    const allCases = cases.map(c => {
+      if (c.id === caseData.id && c.ratings) {
+        const newCount = c.ratings.count + 1
+        const newTotal = c.ratings.total + rating
+        return {
+          ...c,
+          ratings: {
+            count: newCount,
+            total: newTotal,
+            average: newTotal / newCount
+          }
+        }
+      }
+      return c
+    })
+  }
+
   const handleSubmitComment = () => {
     if (!newComment.trim()) return
 
@@ -115,7 +166,8 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
       id: Date.now(),
       user: user.name,
       text: newComment,
-      date: new Date().toISOString()
+      date: new Date().toISOString(),
+      rating: userRating
     }
 
     const allComments = [...comments, comment]
@@ -123,6 +175,30 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
     localStorage.setItem(`comments_${caseData.id}`, JSON.stringify(allComments))
     setNewComment('')
   }
+
+  const renderStars = (rating: number, interactive: boolean = false) => {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            onClick={() => interactive && handleRating(star)}
+            disabled={!interactive || hasRated}
+            className={`text-2xl transition-all ${
+              interactive
+                ? 'hover:scale-110 cursor-pointer'
+                : 'cursor-default'
+            } ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const averageRating = caseData.ratings?.average || 0
+  const ratingCount = caseData.ratings?.count || 0
 
   return (
     <div className="min-h-screen bg-elegant-gradient">
@@ -176,11 +252,11 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             <span>/</span>
             <span className="text-blue-600">{caseData.id.replace('excel_', '')}</span>
           </div>
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <h1 className="text-4xl font-bold text-heading mb-4 flex-1">
               {caseData.title}
             </h1>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleFavorite}
                 className={`px-4 py-2 rounded-lg font-medium transition-all ${
@@ -191,19 +267,52 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
               >
                 {isFavorited ? '❤️ 已收藏' : '🤍 收藏'}
               </button>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleLike}
-                  className="flex items-center gap-1.5 hover:text-red-500 transition-colors"
-                >
-                  <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
-                    {isLiked ? '❤' : '🤍'}
-                  </span>
-                  <span>{likesCount}</span>
-                </button>
-                <div className="flex items-center gap-1.5 text-gray-500">
-                  <span className="text-blue-400">💬</span>
-                  <span>{caseData.reviews_count}</span>
+              <button
+                onClick={handleLike}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-medium transition-all ${
+                  isLiked
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
+                  {isLiked ? '❤' : '🤍'}
+                </span>
+                <span>{likesCount}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 评分统计 */}
+          <div className="elegant-card p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">平均评分</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold text-blue-600">
+                      {averageRating > 0 ? averageRating.toFixed(1) : '-'}
+                    </span>
+                    {averageRating > 0 && renderStars(Math.round(averageRating))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">评分人数</div>
+                  <div className="text-lg font-medium text-gray-700">
+                    {ratingCount} 人
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-500 mb-1">我的评分</div>
+                <div>
+                  {hasRated ? (
+                    <span className="text-lg font-medium text-blue-600">
+                      已评分 {userRating} 星
+                    </span>
+                  ) : (
+                    renderStars(0, true)
+                  )}
                 </div>
               </div>
             </div>
@@ -228,9 +337,9 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
           </div>
         )}
 
-        {/* 完整详细信息 */}
+        {/* 完整详细信息（16个字段） */}
         <div className="max-w-4xl mx-auto space-y-8">
-          {/* 所在区位 */}
+          {/* 1. 所在区位 */}
           {caseData.location && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">所在区位</h2>
@@ -238,7 +347,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 参与主体 */}
+          {/* 2. 参与主体 */}
           {caseData.participants && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">参与主体</h2>
@@ -246,7 +355,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 项目介绍 */}
+          {/* 3. 项目介绍 */}
           {caseData.description && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">项目介绍</h2>
@@ -256,7 +365,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 项目规模 */}
+          {/* 4. 项目规模 */}
           {caseData.scale && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">项目规模</h2>
@@ -264,7 +373,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 总投资额 */}
+          {/* 5. 总投资额 */}
           {caseData.investment && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">总投资额</h2>
@@ -272,7 +381,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 起止时间 */}
+          {/* 6. 起止时间 */}
           {caseData.start_date && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">起止时间</h2>
@@ -280,7 +389,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 获奖情况 */}
+          {/* 7. 获奖情况 */}
           {caseData.awards && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">获奖情况</h2>
@@ -288,7 +397,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 案例类型 */}
+          {/* 8. 案例类型 */}
           {caseData.case_type && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">案例类型</h2>
@@ -296,7 +405,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 可持续目标 */}
+          {/* 9. 可持续目标 */}
           {caseData.sustainable_goal && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">可持续目标</h2>
@@ -304,7 +413,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 示范意义 */}
+          {/* 10. 示范意义 */}
           {caseData.demo_significance && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">示范意义</h2>
@@ -312,7 +421,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 建设阶段 */}
+          {/* 11. 建设阶段 */}
           {raw['建设阶段'] && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">建设阶段</h2>
@@ -320,7 +429,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 项目获奖评价 */}
+          {/* 12. 项目获奖评价 */}
           {raw['项目获奖评价'] && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">项目获奖评价</h2>
@@ -328,7 +437,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 项目举措 */}
+          {/* 13. 项目举措 */}
           {raw['项目举措'] && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">项目举措</h2>
@@ -336,7 +445,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 信息来源 */}
+          {/* 14. 信息来源 */}
           {raw['信息来源'] && (
             <div className="elegant-card p-6">
               <h2 className="text-2xl font-bold text-heading mb-4">信息来源</h2>
@@ -344,7 +453,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 附图（更多图片） */}
+          {/* 15. 附图（所有图片+文字说明） */}
           {detailImages.length > 0 && (
             <div>
               <h2 className="text-2xl font-bold text-heading mb-6">附图</h2>
@@ -368,7 +477,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           )}
 
-          {/* 标签 */}
+          {/* 16. 标签 */}
           <div>
             <h2 className="text-2xl font-bold text-heading mb-4">标签</h2>
             <div className="flex flex-wrap gap-2">
@@ -384,12 +493,13 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
           </div>
         </div>
 
-        {/* 评论区域 */}
+        {/* 评论区（仅在详情页） */}
         <div className="max-w-4xl mx-auto mb-12">
           <h2 className="text-2xl font-bold text-heading mb-6">
             评论 ({comments.length})
           </h2>
 
+          {/* 评论表单 */}
           <div className="elegant-card p-6 mb-6">
             <textarea
               value={newComment}
@@ -409,12 +519,20 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
             </div>
           </div>
 
+          {/* 评论列表 */}
           <div className="space-y-4">
             {comments.length > 0 ? (
               comments.map((comment) => (
                 <div key={comment.id} className="elegant-card p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-heading">{comment.user}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-heading">{comment.user}</span>
+                      {comment.rating && (
+                        <div className="flex gap-0.5">
+                          {renderStars(comment.rating)}
+                        </div>
+                      )}
+                    </div>
                     <span className="text-xs text-gray-400">
                       {new Date(comment.date).toLocaleDateString('zh-CN')}
                     </span>
@@ -423,7 +541,7 @@ export default function CaseDetailPage({ params }: CaseDetailPageProps) {
                 </div>
               ))
             ) : (
-              <div className="text-center py-8 text-body">
+              <div className="text-center py-8 text-body elegant-card p-6">
                 还没有评论，快来发表第一条评论吧！
               </div>
             )}
