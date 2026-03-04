@@ -1,6 +1,12 @@
-import Link from 'next/link'
+'use client'
 
-export interface Case {
+import { useState } from 'react'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+// @ts-ignore
+import cases from '@/data/cases.json'
+
+interface Case {
   id: string
   title: string
   description: string
@@ -28,9 +34,39 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
   const { id, title, description, images, architect, location, tags, likes_count, reviews_count } = caseData
 
   const locationText = Array.isArray(location) ? location.join(', ') : location
-
-  // 获取主图片，如果没有则使用第一张图片
   const mainImage = images.find(img => img.isMain) || images[0]
+
+  const [isLiked, setIsLiked] = useState(false)
+  const [likesCount, setLikesCount] = useState(likes_count)
+  const [isFavorited, setIsFavorited] = useState(false)
+
+  // 检查是否已收藏
+  if (typeof window !== 'undefined') {
+    const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
+    if (favoriteIds.includes(id) && !isFavorited) {
+      setIsFavorited(true)
+    }
+  }
+
+  const handleLike = () => {
+    setIsLiked(!isLiked)
+    setLikesCount(isLiked ? likesCount - 1 : likesCount + 1)
+  }
+
+  const handleFavorite = () => {
+    const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
+    if (favoriteIds.includes(id)) {
+      // 取消收藏
+      const newFavorites = favoriteIds.filter((fid: string) => fid !== id)
+      localStorage.setItem('favorites', JSON.stringify(newFavorites))
+      setIsFavorited(false)
+    } else {
+      // 添加收藏
+      favoriteIds.push(id)
+      localStorage.setItem('favorites', JSON.stringify(favoriteIds))
+      setIsFavorited(true)
+    }
+  }
 
   return (
     <div className="elegant-card overflow-hidden group cursor-pointer hover:shadow-elegant-hover transition-all duration-300">
@@ -54,6 +90,22 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         </div>
+
+        {/* 收藏按钮 */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            handleFavorite()
+          }}
+          className={`absolute top-3 right-3 z-10 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center transition-all ${
+            isFavorited ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-white'
+          }`}
+          title={isFavorited ? '取消收藏' : '收藏'}
+        >
+          <span className={isFavorited ? 'text-red-500' : 'text-gray-400'}>
+            {isFavorited ? '❤️' : '🤍'}
+          </span>
+        </button>
 
         {/* 内容区域 */}
         <div className="p-6">
@@ -96,10 +148,18 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
           {/* 底部统计和按钮 */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-100">
             <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-1.5 text-gray-500">
-                <span className="text-red-400">❤</span>
-                <span>{likes_count}</span>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  handleLike()
+                }}
+                className="flex items-center gap-1.5 hover:text-red-500 transition-colors"
+              >
+                <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
+                  {isLiked ? '❤' : '🤍'}
+                </span>
+                <span>{likesCount}</span>
+              </button>
               <div className="flex items-center gap-1.5 text-gray-500">
                 <span className="text-blue-400">💬</span>
                 <span>{reviews_count}</span>
