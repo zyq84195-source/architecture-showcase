@@ -3,7 +3,7 @@ import { MetadataRoute } from 'next'
 import cases from '@/data/cases.json'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://architecture-showcase.vercel.app' // 替换为你的实际域名
+  const baseUrl = 'https://architecture-showcase.vercel.app'
 
   // 首页
   const routes: MetadataRoute.Sitemap = [
