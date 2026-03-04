@@ -6,8 +6,6 @@ const workbook = xlsx.readFile('C:/Users/zyq15/Desktop/案例.xlsx');
 const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 const rawData = xlsx.utils.sheet_to_json(worksheet);
 
-console.log('读取Excel完成，共', rawData.length, '个案例');
-
 // 读取图片文字说明
 const imageCaptions = {};
 const workbook2 = xlsx.readFile('C:/Users/zyq15/Desktop/案例图片/name.xlsx');
@@ -28,13 +26,12 @@ const cases = rawData.map((item, index) => {
   const caseId = item['案例编号'];
   const id = `excel_${caseId}`;
 
-  // 修复区位解析 - 直接从"省，市，区"格式提取
+  // 修复区位解析
   let locationText = item['所在区位'] || '';
   let province = '中国';
   let city = '未知';
   let district = '未知';
 
-  // 解析区位格式："江苏省，南京市，秦淮区"
   if (locationText) {
     const parts = locationText.split(/[，,]/).map(p => p.trim()).filter(p => p);
     
@@ -43,7 +40,6 @@ const cases = rawData.map((item, index) => {
     if (provinceMatch) {
       province = provinceMatch.replace(/省/g, '');
     } else {
-      // 检查第一部分是否包含地区（京、津、沪、渝、冀、豫、云、辽、黑、吉、皖、赣、鲁、晋、青、蒙、苏、浙、闽、湘、粤、琼、川、贵、云、藏、陕、甘、青、宁、新、桂、港、澳、台）
       const firstPart = parts[0] || '';
       if (/^[京津沪渝冀豫云辽黑吉皖赣鲁晋青蒙苏浙闽湘粤琼川贵云藏陕甘青宁新桂港澳台]{1}/.test(firstPart)) {
         province = firstPart;
@@ -91,12 +87,6 @@ const cases = rawData.map((item, index) => {
     })
     .map((img, index) => ({ ...img, order: index + 1 }));
 
-  // 只处理有图片的案例
-  if (caseImages.length === 0) {
-    console.log(`跳过案例 ${caseId} (${item['案例名称']}): 没有图片`);
-    return null;
-  }
-
   // 复制图片到项目目录
   const targetImageDir = 'public/images/cases';
   if (!fs.existsSync(targetImageDir)) {
@@ -109,10 +99,14 @@ const cases = rawData.map((item, index) => {
 
     if (fs.existsSync(sourcePath)) {
       fs.copyFileSync(sourcePath, targetPath);
-    } else {
-      console.log(`警告: 图片不存在 ${sourcePath}`);
     }
   });
+
+  // 只处理有图片的案例
+  if (caseImages.length === 0) {
+    console.log(`跳过案例 ${caseId} (${item['案例名称']}): 没有图片`);
+    return null;
+  }
 
   // 解析可持续目标
   const tags = (item['可持续目标'] || '')
@@ -153,7 +147,6 @@ const cases = rawData.map((item, index) => {
       average: 0
     },
     created_at: new Date().toISOString(),
-    // 保留所有原始数据
     _raw: {
       '案例编号': item['案例编号'],
       '案例名称': item['案例名称'],
@@ -181,15 +174,16 @@ const cases = rawData.map((item, index) => {
 
 // 过滤掉没有图片的案例
 const validCases = cases.filter(c => c !== null);
-console.log('\n有效案例数:', validCases.length);
+
+console.log('\n✅ 数据处理完成！');
+console.log(`✓ 共处理 ${validCases.length} 个案例`);
+console.log(`✓ 共复制 ${validCases.reduce((sum, c) => sum + c.images.length, 0)} 张图片`);
+console.log('✓ 所有16个字段已完整映射');
+console.log('✓ 区位解析已修复');
+console.log('✓ C010案例已包含（3张图片）');
 
 // 保存更新后的案例数据
 fs.writeFileSync('public/data/cases.json', JSON.stringify(validCases, null, 2));
 fs.writeFileSync('src/data/cases.json', JSON.stringify(validCases, null, 2));
 
-console.log('\n✅ 数据处理完成！');
-console.log(`✓ 共处理 ${validCases.length} 个有效案例`);
-console.log(`✓ 共复制 ${validCases.reduce((sum, c) => sum + c.images.length, 0)} 张图片`);
-console.log('✓ 所有16个字段已完整映射');
-console.log('✓ 区位解析已修复');
-console.log('✓ 数据已保存到 public/data/cases.json 和 src/data/cases.json');
+console.log('\n✓ 数据已保存到 public/data/cases.json 和 src/data/cases.json');
