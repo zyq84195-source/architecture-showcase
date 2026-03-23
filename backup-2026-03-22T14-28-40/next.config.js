@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['architecture-search-framework'],
   images: {
     remotePatterns: [
       {

@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-03-22T14:28:40.395Z",
+  "projectDir": "C:\\Users\\zyq15\\.openclaw\\workspace\\architecture-showcase",
+  "backupDir": "C:\\Users\\zyq15\\.openclaw\\workspace\\architecture-showcase\\backup-2026-03-22T14-28-40",
+  "backedUpFiles": [
+    "package.json",
+    "package-lock.json",
+    "next.config.js",
+    "tsconfig.json",
+    ".env.local"
+  ],
+  "backedUpCount": 5,
+  "gitBranch": "main",
+  "gitStatus": "dirty"
+}
