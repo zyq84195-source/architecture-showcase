@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import CaseCard from '@/components/case-card'
-// @ts-ignore
 import cases from '@/data/cases.json'
 
 export default function HomePage() {
