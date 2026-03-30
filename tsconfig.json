@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "architecture-search-framework": [
+        "../architecture-search-framework/dist/index.d.ts"
       ]
     }
   },

@@ -33,6 +33,14 @@ const convertedCases = casesData.map((caseItem: any) => {
 
 // 导入数据到数据库
 async function importCases() {
+  if (!supabaseAdmin) {
+    console.error('❌ Supabase Admin 未配置');
+    console.error('请在 .env.local 中设置以下环境变量：');
+    console.error('  - NEXT_PUBLIC_SUPABASE_URL');
+    console.error('  - SUPABASE_SERVICE_ROLE_KEY');
+    process.exit(1);
+  }
+
   console.log(`开始导入 ${convertedCases.length} 个案例...\n`);
 
   let successCount = 0;

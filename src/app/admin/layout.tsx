@@ -18,6 +18,12 @@ export default function AdminLayout({
 
   useEffect(() => {
     const checkAuth = async () => {
+      if (!supabase) {
+        setError('系统未配置，请联系管理员');
+        setLoading(false);
+        return;
+      }
+
       const { data: { session }, error } = await supabase.auth.getSession();
 
       if (error || !session) {
@@ -43,6 +49,7 @@ export default function AdminLayout({
   }, [router]);
 
   const handleLogout = async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
     router.push('/auth/login');
   };

@@ -1,8 +1,16 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   const { email, password } = await request.json();
+
+  if (!supabase) {
+    return NextResponse.json(
+      { error: '系统未配置，请联系管理员' },
+      { status: 500 }
+    );
+  }
 
   // 使用 Supabase Auth 登录
   const { data, error } = await supabase.auth.signInWithPassword({

@@ -7,6 +7,13 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: '系统未配置，请联系管理员' },
+        { status: 500 }
+      );
+    }
+
     const { data, error } = await supabaseAdmin
       .from('cases')
       .select('*')
@@ -38,6 +45,13 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: '系统未配置，请联系管理员' },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
 
     // 验证必填字段
@@ -102,6 +116,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: '系统未配置，请联系管理员' },
+        { status: 500 }
+      );
+    }
+
     const { error } = await supabaseAdmin
       .from('cases')
       .delete()

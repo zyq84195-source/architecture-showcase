@@ -24,6 +24,11 @@ export async function middleware(request: NextRequest) {
   }
 
   // 3. 检查用户登录状态
+  if (!supabase) {
+    // Supabase 未配置，允许访问
+    return NextResponse.next();
+  }
+
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (error || !session) {

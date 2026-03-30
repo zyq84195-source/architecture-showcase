@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['architecture-search-framework'],
+  // transpilePackages: ['architecture-search-framework'], // Disabled to fix module resolution
   images: {
     remotePatterns: [
       {
@@ -12,6 +12,19 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ['lucide-react'],
+  },
+  webpack: (config, { isServer }) => {
+    // Fix module resolution for architecture-search-framework
+    config.resolve.alias = {
+      ...config.resolve.alias,
+    };
+    
+    // Ensure external packages are not bundled
+    if (isServer) {
+      config.externals = [...(config.externals || []), 'sharp'];
+    }
+    
+    return config;
   },
 }
 

@@ -1,8 +1,9 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabase } from './supabase';
 
 export async function requireAdmin() {
-  const supabase = createServerComponentClient({ cookies });
+  if (!supabase) {
+    throw new Error('系统未配置，请联系管理员');
+  }
 
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -20,7 +21,9 @@ export async function requireAdmin() {
 }
 
 export async function requireAuthenticated() {
-  const supabase = createServerComponentClient({ cookies });
+  if (!supabase) {
+    throw new Error('系统未配置，请联系管理员');
+  }
 
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -32,7 +35,9 @@ export async function requireAuthenticated() {
 }
 
 export async function requireProfessor() {
-  const supabase = createServerComponentClient({ cookies });
+  if (!supabase) {
+    throw new Error('系统未配置，请联系管理员');
+  }
 
   const { data: { session } } = await supabase.auth.getSession();
 

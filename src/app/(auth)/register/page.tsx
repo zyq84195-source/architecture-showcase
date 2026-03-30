@@ -35,6 +35,12 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!supabase) {
+      setError('系统未配置，请联系管理员');
+      setLoading(false);
+      return;
+    }
+
     try {
       // 调用注册 API（使用 Supabase Auth）
       const { data, error } = await supabase.auth.signUp({

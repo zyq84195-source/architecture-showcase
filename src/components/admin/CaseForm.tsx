@@ -35,12 +35,12 @@ export default function CaseForm({ initialData, onSubmit, onCancel }: CaseFormPr
     setError('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
 
       const response = await fetch('/api/admin/upload', {
         method: 'POST',
-        body: formData,
+        body: uploadFormData,
       });
 
       if (!response.ok) throw new Error('图片上传失败');

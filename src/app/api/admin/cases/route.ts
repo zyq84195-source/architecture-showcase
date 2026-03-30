@@ -4,6 +4,13 @@ import { supabaseAdmin } from '@/lib/supabase';
 // GET - 获取所有案例
 export async function GET(request: Request) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: '系统未配置，请联系管理员' },
+        { status: 500 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const isPublished = searchParams.get('is_published');
@@ -40,6 +47,13 @@ export async function GET(request: Request) {
 // POST - 创建新案例
 export async function POST(request: Request) {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: '系统未配置，请联系管理员' },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
 
     // 验证必填字段

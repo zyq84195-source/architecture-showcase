@@ -19,6 +19,12 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
+    if (!supabase) {
+      setError('系统未配置，请联系管理员');
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
