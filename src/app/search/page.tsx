@@ -25,9 +25,17 @@ interface WebSearchResult {
   [key: string]: any
 }
 
+interface ComparisonReport {
+  summary: string
+  keyFindings: string[]
+  similarities: string[]
+  differences: string[]
+  recommendations: string[]
+}
+
 export default function SearchPage() {
-  // 搜索模式：internal（内部）| web（全网）
-  const [searchMode, setSearchMode] = useState<'internal' | 'web'>('internal')
+  // 搜索模式：internal（内部）| web（全网）| compare（AI比对）
+  const [searchMode, setSearchMode] = useState<'internal' | 'web' | 'compare'>('internal')
 
   // 内部搜索状态
   const [searchTerm, setSearchTerm] = useState('')
@@ -44,7 +52,12 @@ export default function SearchPage() {
   const [webIsSearching, setWebIsSearching] = useState(false)
   const [webError, setWebError] = useState('')
   const [webSuggestion, setWebSuggestion] = useState('')
-  const [searchApiMode, setSearchApiMode] = useState<'full' | 'search-only'>('search-only')
+
+  // AI比对状态
+  const [selectedCases, setSelectedCases] = useState<Case[]>([])
+  const [comparisonReport, setComparisonReport] = useState<ComparisonReport | null>(null)
+  const [isComparing, setIsComparing] = useState(false)
+  const [comparisonError, setComparisonError] = useState('')
 
   // 加载案例数据
   const allCases: Case[] = require('@/data/cases.json')
@@ -128,6 +141,53 @@ export default function SearchPage() {
 
   const locationTags = ['北京', '上海', '广州', '深圳', '重庆', '成都', '杭州', '贵阳']
 
+  // 切换案例选中状态（用于AI比对）
+  const toggleCaseSelection = (caseItem: Case) => {
+    if (selectedCases.find(c => c.id === caseItem.id)) {
+      setSelectedCases(selectedCases.filter(c => c.id !== caseItem.id))
+    } else {
+      if (selectedCases.length < 5) {
+        setSelectedCases([...selectedCases, caseItem])
+      } else {
+        alert('最多只能选择5个案例进行比对')
+      }
+    }
+  }
+
+  // 执行AI比对
+  const handleAICompare = async () => {
+    if (selectedCases.length < 2) {
+      alert('请至少选择2个案例进行比对')
+      return
+    }
+
+    setIsComparing(true)
+    setComparisonReport(null)
+    setComparisonError('')
+
+    try {
+      const response = await fetch('/api/ai-compare', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cases: selectedCases }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setComparisonReport(data.report)
+      } else {
+        setComparisonError(data.error || '比对失败')
+      }
+    } catch (error: any) {
+      setComparisonError(`比对失败：${error.message}`)
+    } finally {
+      setIsComparing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-elegant-gradient text-foreground">
       {/* 导航栏 */}
@@ -192,6 +252,12 @@ export default function SearchPage() {
               className={`flex-1 ${searchMode === 'web' ? 'btn-primary-elegant' : 'btn-secondary-elegant'}`}
             >
               🌐 全网搜索
+            </Button>
+            <Button
+              onClick={() => setSearchMode('compare')}
+              className={`flex-1 ${searchMode === 'compare' ? 'btn-primary-elegant' : 'btn-secondary-elegant'}`}
+            >
+              🤖 AI比对
             </Button>
           </div>
         </div>
@@ -275,15 +341,26 @@ export default function SearchPage() {
                   <h2 className="text-2xl font-bold text-heading">
                     搜索结果 ({results.length})
                   </h2>
-                  {results.length > 0 && (
-                    <Button
-                      onClick={handleClear}
-                      variant="outline"
-                      className="btn-secondary-elegant"
-                    >
-                      清空
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {results.length > 0 && (
+                      <Button
+                        onClick={() => setSearchMode('compare')}
+                        variant="outline"
+                        className="btn-secondary-elegant"
+                      >
+                        🤖 AI比对 ({selectedCases.length}/5)
+                      </Button>
+                    )}
+                    {results.length > 0 && (
+                      <Button
+                        onClick={handleClear}
+                        variant="outline"
+                        className="btn-secondary-elegant"
+                      >
+                        清空
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {results.length === 0 ? (
@@ -297,7 +374,15 @@ export default function SearchPage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {results.map((item) => (
-                      <CaseCard key={item.id} case={item} />
+                      <div key={item.id} className="relative">
+                        <input
+                          type="checkbox"
+                          className="absolute top-4 right-4 w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 z-10"
+                          checked={selectedCases.find(c => c.id === item.id) !== undefined}
+                          onChange={() => toggleCaseSelection(item)}
+                        />
+                        <CaseCard case={item} />
+                      </div>
                     ))}
                   </div>
                 )}
@@ -309,41 +394,6 @@ export default function SearchPage() {
         {/* 全网搜索区域 */}
         {searchMode === 'web' && (
           <div className="max-w-4xl mx-auto animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            {/* 搜索模式说明 */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold text-blue-900 mb-3">搜索模式说明</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong className="text-blue-700">🔍 仅搜索模式（推荐）</strong>
-                  <p className="text-gray-700 mt-1">快速搜索互联网案例，不使用 AI 模型。适合快速查找案例。</p>
-                </div>
-                <div>
-                  <strong className="text-blue-700">🤖 完整模式</strong>
-                  <p className="text-gray-700 mt-1">AI 智能分析，自动提取案例信息。需要配置有效的 API Key。</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 搜索模式切换 */}
-            <div className="elegant-card p-4 mb-6">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-gray-700">选择模式：</span>
-                <Button
-                  variant={searchApiMode === 'search-only' ? 'default' : 'outline'}
-                  onClick={() => setSearchApiMode('search-only')}
-                  className="flex-1"
-                >
-                  🔍 仅搜索
-                </Button>
-                <Button
-                  variant={searchApiMode === 'full' ? 'default' : 'outline'}
-                  onClick={() => setSearchApiMode('full')}
-                  className="flex-1"
-                >
-                  🤖 完整模式
-                </Button>
-              </div>
-            </div>
 
             {/* 搜索框 */}
             <div className="elegant-card p-6 mb-6">
@@ -455,6 +505,177 @@ export default function SearchPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI比对区域 */}
+        {searchMode === 'compare' && (
+          <div className="max-w-6xl mx-auto animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-purple-900 mb-3">🤖 AI 智能比对</h3>
+              <p className="text-gray-700 mb-4">
+                选择 2-5 个建筑案例，AI 将自动分析它们在设计理念、建筑风格、功能布局等方面的相似与差异，生成对比报告。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {quickSearchTags.slice(0, 5).map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => {
+                      setSearchTerm(tag)
+                      setSearchMode('internal')
+                      handleInternalSearch()
+                    }}
+                    className="px-3 py-1 text-sm bg-white hover:bg-purple-100 text-gray-700 hover:text-purple-700 rounded-full transition-colors"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 已选择的案例 */}
+            {selectedCases.length > 0 && (
+              <div className="elegant-card p-6 mb-6 animate-fade-in">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-heading">
+                    已选择 {selectedCases.length} 个案例
+                  </h3>
+                  <Button
+                    onClick={handleAICompare}
+                    disabled={isComparing || selectedCases.length < 2}
+                    className="btn-primary-elegant"
+                  >
+                    {isComparing ? '分析中...' : '开始比对'}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {selectedCases.map((caseItem) => (
+                    <div key={caseItem.id} className="bg-gray-50 rounded-lg p-4 relative">
+                      <button
+                        onClick={() => toggleCaseSelection(caseItem)}
+                        className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                      <h4 className="font-bold text-heading mb-2">{caseItem.title}</h4>
+                      <p className="text-sm text-gray-600 line-clamp-2">{caseItem.description}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {caseItem.tags.slice(0, 3).map((tag) => (
+                          <span key={tag} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 对比报告 */}
+            {comparisonReport && (
+              <div className="elegant-card p-6 mb-6 animate-fade-in">
+                <h3 className="text-xl font-bold text-heading mb-6">📊 对比报告</h3>
+
+                {/* 总结 */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h4 className="font-semibold text-blue-900 mb-2">💡 总结</h4>
+                  <p className="text-gray-700">{comparisonReport.summary}</p>
+                </div>
+
+                {/* 关键发现 */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-heading mb-3">🎯 关键发现</h4>
+                  <ul className="space-y-2">
+                    {comparisonReport.keyFindings.map((finding, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-blue-600 mt-1">•</span>
+                        <span className="text-gray-700">{finding}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* 相似点 */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-heading mb-3">✅ 相似点</h4>
+                  <ul className="space-y-2">
+                    {comparisonReport.similarities.map((similarity, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">✓</span>
+                        <span className="text-gray-700">{similarity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* 差异点 */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-heading mb-3">❌ 差异点</h4>
+                  <ul className="space-y-2">
+                    {comparisonReport.differences.map((difference, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-red-600 mt-1">✗</span>
+                        <span className="text-gray-700">{difference}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* 建议 */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-green-900 mb-3">💭 建议</h4>
+                  <ul className="space-y-2">
+                    {comparisonReport.recommendations.map((recommendation, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">→</span>
+                        <span className="text-gray-700">{recommendation}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* 错误提示 */}
+            {comparisonError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 animate-fade-in">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">⚠️</span>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-red-900 mb-1">比对失败</h3>
+                    <p className="text-red-700">{comparisonError}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 空状态 */}
+            {selectedCases.length === 0 && !comparisonReport && (
+              <div className="elegant-card p-12 text-center">
+                <div className="text-6xl mb-4">🤖</div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">开始AI比对</h3>
+                <p className="text-gray-600 mb-4">
+                  请先在"内部搜索"中找到感兴趣的案例，然后勾选 2-5 个案例进行比对
+                </p>
+                <Button
+                  onClick={() => setSearchMode('internal')}
+                  className="btn-primary-elegant"
+                >
+                  去搜索案例
+                </Button>
+              </div>
+            )}
+
+            {/* 加载动画 */}
+            {isComparing && (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="animate-spin w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full"></div>
+                  <p className="text-gray-600">AI 正在分析中...</p>
+                </div>
               </div>
             )}
           </div>
