@@ -1,122 +1,127 @@
-/**
- * 案例数据导入脚本
- *
- * 用途：将 cases.json 中的案例数据导入到 Supabase 数据库
- * 使用方法：node scripts/import-cases.js
- */
-
-const { createClient } = require('@supabase/supabase-js');
+const XLSX = require('xlsx');
 const fs = require('fs');
-const path = require('path');
 
-// Supabase 配置（从环境变量读取）
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://showcase-website.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// 案例信息文件路径（主数据源）
+const CASES_CSV_PATH = 'C:/Users/zyq15/Desktop/案例.csv';
+// 图片信息文件路径（图片文件名映射）
+const IMAGES_CSV_PATH = 'C:/Users/zyq15/Desktop/案例图片\name.csv';
 
-if (!supabaseKey) {
-  console.error('❌ 错误：请设置 SUPABASE_SERVICE_ROLE_KEY 环境变量');
-  console.error('使用方法：set SUPABASE_SERVICE_ROLE_KEY=your_key && node scripts/import-cases.js');
-  process.exit(1);
-}
+console.log('📊 开始读取案例数据...');
+console.log('案例信息文件:', CASES_CSV_PATH);
+console.log('图片信息文件:', IMAGES_CSV_PATH);
 
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// 读取案例数据
-const casesData = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../src/data/cases.json'), 'utf8')
-);
-
-console.log(`📊 共读取到 ${casesData.length} 个案例\n`);
-
-// 导入数据
-async function importCases() {
-  console.log('🚀 开始导入案例数据...\n');
-
-  for (let i = 0; i < casesData.length; i++) {
-    const caseData = casesData[i];
-    const caseNumber = String(i + 1).padStart(3, '0');
-
-    console.log(`\n📦 处理案例 [${caseNumber}/${casesData.length}]: ${caseData.title.substring(0, 50)}...`);
-
-    try {
-      // 提取关键信息
-      const tags = caseData.tags || [];
-      const location = caseData.location && Array.isArray(caseData.location)
-        ? caseData.location.join(', ')
-        : (caseData._raw?.所在区位 || '');
-
-      // 转换数据格式以匹配数据库表结构
-      const dbData = {
-        title: caseData.title,
-        description: caseData.description || '',
-        category: tags.includes('宜居') ? '住宅'
-          : tags.includes('商业') ? '商业'
-          : tags.includes('公共建筑') ? '公共建筑'
-          : tags.includes('文化建筑') ? '文化建筑'
-          : tags.includes('工业建筑') ? '工业建筑'
-          : '其他',
-        architect: caseData.participants || caseData._raw?.参与主体 || '',
-        location: location,
-        year: caseData._raw?.起止时间
-          ? parseInt(caseData._raw.起止时间.split('年')[0]) || null
-          : null,
-        area: caseData.scale
-          ? parseFloat(caseData.scale.replace(/[^\d.]/g, '')) || null
-          : null,
-        height: null,
-        style: tags.includes('现代简约') ? '现代简约'
-          : tags.includes('传统') ? '传统'
-          : tags.includes('科技') ? '科技'
-          : tags.includes('生态') ? '生态'
-          : tags.includes('绿色') ? '绿色'
-          : '其他',
-        image_url: caseData.images && caseData.images.length > 0
-          ? caseData.images[0].url
-          : null,
-        is_published: true
-      };
-
-      console.log(`   ├─ 分类: ${dbData.category}`);
-      console.log(`   ├─ 地点: ${dbData.location.substring(0, 30)}...`);
-      console.log(`   ├─ 面积: ${dbData.area ? dbData.area.toLocaleString() : 'N/A'} 平方米`);
-      console.log(`   ├─ 年份: ${dbData.year || 'N/A'}`);
-
-      // 插入到数据库
-      const { data, error } = await supabase
-        .from('cases')
-        .insert([dbData])
-        .select()
-        .single();
-
-      if (error) {
-        console.error(`   ❌ 插入失败: ${error.message}`);
-        console.error(`   错误详情:`, error);
-        continue;
-      }
-
-      console.log(`   ✅ 成功导入，ID: ${data.id}`);
-
-      // 处理图片上传（可选）
-      if (caseData.images && caseData.images.length > 0) {
-        console.log(`   ├─ 图片数: ${caseData.images.length}`);
-        // 可以在这里添加图片上传逻辑
-      }
-
-    } catch (error) {
-      console.error(`   ❌ 处理失败: ${error.message}`);
-    }
-
-    // 添加延迟，避免请求过快
-    await new Promise(resolve => setTimeout(resolve, 500));
+try {
+  // 读取案例信息
+  if (!fs.existsSync(CASES_CSV_PATH)) {
+    console.error('❌ 案例信息文件不存在:', CASES_CSV_PATH);
+    process.exit(1);
   }
 
-  console.log('\n✨ 导入完成！');
-  console.log('\n📊 统计信息:');
-  console.log(`   - 总案例数: ${casesData.length}`);
-}
+  const casesContent = fs.readFileSync(CASES_CSV_PATH, 'utf-8');
+  const casesLines = casesContent.split(/\r?\n/).filter(line => line.trim() !== '');
+  console.log('✅ 案例信息文件读取完成');
+  console.log(`📊 总行数: ${casesLines.length}`);
 
-// 执行导入
-importCases().catch(error => {
-  console.error('💥 导入过程中发生错误:', error);
+  // 读取图片信息
+  let imagesMap = {};
+  if (fs.existsSync(IMAGES_CSV_PATH)) {
+    const imagesContent = fs.readFileSync(IMAGES_CSV_PATH, 'utf-8');
+    const imagesLines = imagesContent.split(/\r?\n/).filter(line => line.trim() !== '');
+    
+    // 解析图片映射（案例编号 → 图片文件名列表）
+    for (let i = 1; i < imagesLines.length; i++) {
+      const line = imagesLines[i];
+      const parts = line.split(',');
+      if (parts.length >= 2) {
+        const caseId = parts[0].trim();
+        const imageFile = parts[1].trim();
+        
+        if (!imagesMap[caseId]) {
+          imagesMap[caseId] = [];
+        }
+        imagesMap[caseId].push(imageFile);
+      }
+    }
+    console.log(`✅ 图片信息文件读取完成`);
+    console.log(`📊 映射的案例数: ${Object.keys(imagesMap).length}`);
+  } else {
+    console.warn('⚠️ 图片信息文件不存在，将不包含图片数据');
+  }
+
+  // 解析案例数据（从第2行开始，因为第1行可能是表头）
+  const data = [];
+  let headers = [];
+  
+  if (casesLines.length > 0) {
+    headers = casesLines[0].split(',').map(h => h.trim());
+  }
+
+  console.log('📋 案例信息表头:');
+  console.log('表头列数:', headers.length);
+  console.log('');
+  console.log('📊 开始解析案例数据...');
+
+  for (let i = 1; i < casesLines.length; i++) {
+    const line = casesLines[i];
+    const values = line.split(',').map(v => v.trim());
+
+    // 跳过空行
+    if (values.length < 2) continue;
+
+    // 创建案例对象
+    const caseData = {
+      id: `case_${String(i).padStart(3, '0')}`,
+      title: values[0] || '',
+      description: values[1] || '',
+      architect: values[2] || '',
+      location: values[3] || '',
+      tags: values[4] ? values[4].split(';').map(tag => tag.trim()) : [],
+      project_scale: values[5] || '',
+      total_investment: values[6] || '',
+      start_date: values[7] || '',
+      award_status: values[8] || '',
+      case_type: values[9] || '',
+      sustainable_goals: values[10] || '',
+      significance: values[11] || '',
+      project_introduction: values[12] || '',
+      construction_stage: values[13] || '',
+      project_award: values[14] || '',
+      project_action: values[15] || '',
+      information_source: values[16] || '',
+      likes_count: 0,
+      reviews_count: 0,
+      created_at: new Date().toISOString(),
+      images: imagesMap[`case_${String(i).padStart(3, '0')}`] || [],
+    };
+
+    // 验证必填字段（标题）
+    if (!caseData.title) {
+      console.warn(`⚠️ 第 ${i} 行缺少标题，已跳过`);
+      continue;
+    }
+
+    data.push(caseData);
+
+    // 每100行输出一次进度
+    if (i % 100 === 0) {
+      console.log(`📊 已解析 ${i} 行数据...`);
+    }
+  }
+
+  console.log('✅ 数据解析完成！');
+  console.log(`📊 总共解析 ${data.length} 条案例数据`);
+  console.log('');
+  console.log('📋 数据摘要:');
+  console.log(`  - 总案例数: ${data.length}`);
+  console.log(`  - 有标题的案例: ${data.filter(c => c.title).length}`);
+  console.log(`  - 有图片映射的案例: ${Object.keys(imagesMap).length}`);
+  console.log(`  - 平均图片数/案例: ${Object.keys(imagesMap).length > 0 ? Math.ceil(data.length / Object.keys(imagesMap).length) : 0}`);
+  console.log('');
+  console.log('💾 写入数据到 data/cases.json...');
+  fs.writeFileSync('data/cases.json', JSON.stringify(data, null, 2), 'utf-8');
+  console.log('✅ 数据写入完成！');
+
+} catch (error) {
+  console.error('❌ 读取文件失败:', error.message);
   process.exit(1);
-});
+}
