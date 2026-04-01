@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // CSV文件路径
-const CSV_PATH = 'C:/Users/zyq15/Desktop/案例(1).csv';
+const CSV_PATH = 'C:/Users/zyq15/Desktop/案例.csv';
 // 图片文件夹路径
 const IMAGES_FOLDER = 'C:/Users/zyq15/Desktop/案例图片';
 
@@ -19,27 +19,34 @@ try {
 
   console.log('✅ CSV文件存在');
 
-  // 读取CSV文件
+  // 读取CSV文件（使用UTF-8编码）
   console.log('📖 读取CSV文件...');
   const csvContent = fs.readFileSync(CSV_PATH, 'utf-8');
-  const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+  const lines = csvContent.split(/\r?\n/).filter(line => line.trim() !== '');
 
   console.log('✅ 文件读取完成');
   console.log(`📊 总行数: ${lines.length}`);
 
   // 解析CSV数据
   const data = [];
-  const headers = lines[0].split(',');
+  let headers = [];
 
-  console.log('📋 CSV表头:');
-  console.log('表头:', headers);
+  // 读取表头（第一行）
+  if (lines.length > 0) {
+    headers = lines[0].split(',').map(h => h.trim());
+    console.log('📋 CSV表头:');
+    console.log('  列数:', headers.length);
+    headers.forEach((h, index) => {
+      console.log(`  ${index + 1}. ${h}`);
+    });
+  }
 
-  // 从第2行开始解析数据
+  // 从第二行开始解析数据
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     const values = line.split(',').map(v => v.trim());
 
-    // 根据表头创建案例对象
+    // 根据列数创建案例对象
     const caseData = {
       id: `csv_${String(i).padStart(3, '0')}`,
       title: values[0] || '',
@@ -52,16 +59,16 @@ try {
       created_at: new Date().toISOString(),
     };
 
-    // 验证必填字段
+    // 验证必填字段（标题）
     if (!caseData.title) {
-      console.warn(`⚠️ 第 ${i} 行缺少标题，已跳过`);
+      console.warn(`⚠️  第 ${i} 行缺少标题，已跳过`);
       continue;
     }
 
     data.push(caseData);
 
-    // 每解析50行输出一次进度
-    if (i % 50 === 0) {
+    // 每100行输出一次进度
+    if (i % 100 === 0) {
       console.log(`📊 已解析 ${i} 行数据...`);
     }
   }
