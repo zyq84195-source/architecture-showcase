@@ -13,7 +13,6 @@ try {
     process.exit(1);
   }
 
-  console.log('Excel file exists');
   const workbook = XLSX.readFile(EXCEL_PATH);
 
   if (!workbook.Sheets || workbook.Sheets.length === 0) {
@@ -25,18 +24,23 @@ try {
   console.log('Worksheet name:', worksheet.name);
   console.log('Row count:', worksheet.rowCount);
 
-  // Read first 10 rows as sample
+  // Read first 10 rows
   const sampleData = [];
   for (let rowIndex = 1; rowIndex <= Math.min(10, worksheet.rowCount); rowIndex++) {
     const row = worksheet.getRow(rowIndex);
+    const cell1 = row.getCell(1);
+    const cell2 = row.getCell(2);
+    const cell3 = row.getCell(3);
+    const cell4 = row.getCell(4);
+    const cell5 = row.getCell(5);
 
     const caseData = {
       id: `excel_${String(rowIndex).padStart(3, '0')}`,
-      title: row.getCell(1)?.value || '',
-      description: row.getCell(2)?.value || '',
-      architect: row.getCell(3)?.value || '',
-      location: row.getCell(4)?.value || '',
-      tags: row.getCell(5)?.value ? row.getCell(5).value.split(',').map(tag => tag.trim()) : [],
+      title: cell1 ? cell1.value : '',
+      description: cell2 ? cell2.value : '',
+      architect: cell3 ? cell3.value : '',
+      location: cell4 ? cell4.value : '',
+      tags: cell5 ? cell5.value.split(',').map(tag => tag.trim()) : [],
       likes_count: 0,
       reviews_count: 0,
       created_at: new Date().toISOString(),
@@ -47,8 +51,9 @@ try {
 
   console.log('Sample data (first 10 rows):');
   console.log(JSON.stringify(sampleData, null, 2));
+  console.log('');
   console.log('Total rows:', worksheet.rowCount);
-
+  console.log('Excel file format: Title, Description, Architect, Location, Tags');
   process.exit(0);
 
 } catch (error) {
