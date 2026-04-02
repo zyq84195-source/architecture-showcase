@@ -177,7 +177,7 @@ async function searchWithTavily(query: string, maxResults: number): Promise<Sear
       api_key: apiKey,
       query: `${query} 建筑案例 项目`,
       search_depth: 'advanced',
-      max_results: maxResults,
+      max_results: max_results,
       include_answer: true,
       include_raw_content: false,
       include_images: false,
