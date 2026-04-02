@@ -161,7 +161,7 @@ ${item.content ? item.content.substring(0, 2000) : item.snippet}
 /**
  * 调用 Tavily API 搜索
  */
-async function searchWithTavily(query: string, maxResults: number): Promise<SearchResult[]> {
+async function searchWithTavily(query: string, max_results: number): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
 
     // 步骤 3：生成 AI 总结
     console.log('[Smart Search] Step 3: Generating AI summary with Local Qwen...');
-    const aiSummary = await generateLocalQwenSummary(detailedResults, summaryLength);
+    const aiSummary = await generateLocalQwenSummary(detailedResults, summary_length);
     console.log('[Smart Search] AI summary generated successfully');
 
     // 返回结果
