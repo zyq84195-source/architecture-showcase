@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
 
     // 步骤 1：搜索真实案例信息
     console.log('[Smart Search] Step 1: Searching with Tavily API...');
-    const searchResults = await searchWithTavily(q, maxResults);
+    const searchResults = await searchWithTavily(q, max_results);
     console.log(`[Smart Search] Found ${searchResults.length} search results`);
 
     // 步骤 2：爬取详细信息
