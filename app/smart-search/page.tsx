@@ -52,8 +52,8 @@ interface SmartSearchResponse {
 
 export default function SmartSearchPage() {
   const [searchTerm, setSearchTerm] = useState('')
-  const [maxResults, setMaxResults] = useState(3)
-  const [summaryLength, setSummaryLength] = useState(500)
+  const [max_results, setMaxResults] = useState(3)
+  const [summary_length, setSummaryLength] = useState(500)
   
   const [isSearching, setIsSearching] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
@@ -86,8 +86,8 @@ export default function SmartSearchPage() {
         },
         body: JSON.stringify({
           q: searchTerm,
-          max_results: maxResults,
-          summary_length: summaryLength,
+          max_results: max_results,
+          summary_length: summary_length,
         }),
       })
 
@@ -202,7 +202,7 @@ export default function SmartSearchPage() {
                 最大结果数
               </label>
               <select
-                value={maxResults}
+                value={max_results}
                 onChange={(e) => setMaxResults(parseInt(e.target.value))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -218,7 +218,7 @@ export default function SmartSearchPage() {
                 AI 总结长度
               </label>
               <select
-                value={summaryLength}
+                value={summary_length}
                 onChange={(e) => setSummaryLength(parseInt(e.target.value))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
