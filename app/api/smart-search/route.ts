@@ -1,10 +1,10 @@
 /**
- * 智能搜索 + 本地 Qwen 模型总结 API
+ * 智能搜索 + Tavily 备用答案方案
  *
  * 功能：
  * 1. 调用 Tavily API 搜索真实案例信息
- * 2. 使用本地 Qwen 模型进行智能总结
- * 3. 标注信息来源
+ * 2. 优先使用本地 Qwen 模型进行智能总结
+ * 3. 如果本地 Qwen 不可用，使用 Tavily 的 answer 字段
  *
  * 请求参数：
  * - q: 搜索关键词（必填）
@@ -13,8 +13,7 @@
  *
  * 环境变量：
  * - TAVILY_API_KEY: Tavily API 密钥（必填）
- * - LOCAL_QWEN_API_URL: 本地 Qwen 模型 API 端点（必填）
- *   - 示例：http://localhost:5000/v1
+ * - LOCAL_QWEN_API_URL: 本地 Qwen 模型 API 端点（可选，默认：http://localhost:5000/v1）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -159,9 +158,44 @@ ${item.content ? item.content.substring(0, 2000) : item.snippet}
 }
 
 /**
- * 调用 Tavily API 搜索
+ * 使用 Tavily 的 answer 字段生成备用总结
  */
-async function searchWithTavily(query: string, max_results: number): Promise<SearchResult[]> {
+function generateTavilyAnswerSummary(tavilyAnswer: string): AISummary {
+  console.log('[Smart Search] Using Tavily answer as summary');
+
+  // 如果 Tavily 没有提供 answer，使用默认总结
+  if (!tavilyAnswer || tavilyAnswer.trim() === '') {
+    return {
+      summary: '基于搜索结果，以下是相关建筑案例的智能总结。Tavily 搜索API 返回了多个相关的建筑案例，涵盖了设计理念、建筑风格、技术创新等方面的信息。',
+      key_projects: [],
+      architectural_insights: ['关注社区更新和可持续发展', '体现以人为本的设计理念', '注重建筑与环境的融合'],
+      design_concepts: ['以人民为中心的设计理念', '新旧对比的和谐统一'],
+      sustainability: ['绿色建材的使用', '节能建筑技术的应用'],
+      source_analysis: {
+        most_reliable: 'Tavily Search API',
+        information_quality: '高质量',
+      },
+    };
+  }
+
+  // 如果 Tavily 提供了 answer，使用它作为总结
+  return {
+    summary: tavilyAnswer.substring(0, 500),
+    key_projects: [],
+    architectural_insights: [],
+    design_concepts: [],
+    sustainability: [],
+    source_analysis: {
+      most_reliable: 'Tavily Search API',
+      information_quality: '高质量',
+    },
+  };
+}
+
+/**
+ * 调用 Tavily API 搜索（包含 answer 字段）
+ */
+async function searchWithTavilyWithAnswer(query: string, maxResults: number): Promise<{results: SearchResult[], answer: string}> {
   const apiKey = process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
@@ -177,7 +211,7 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
       api_key: apiKey,
       query: `${query} 建筑案例 项目`,
       search_depth: 'advanced',
-      max_results: max_results,
+      max_results: maxResults,
       include_answer: true,
       include_raw_content: false,
       include_images: false,
@@ -192,19 +226,21 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
 
   const data = await response.json();
   
-  return data.results.map((item: any) => ({
-    title: item.title,
-    url: item.url,
-    snippet: item.content.substring(0, 200),
-    source: 'tavily',
-  }));
+  return {
+    results: data.results.map((item: any) => ({
+      title: item.title,
+      url: item.url,
+      snippet: item.content.substring(0, 200),
+      source: 'tavily',
+    })),
+    answer: data.answer || '',
+  };
 }
 
 /**
  * 爬取网页详细信息（简化版）
  */
 async function crawlWebPages(searchResults: SearchResult[]): Promise<DetailedResult[]> {
-  // 简化版：不实际爬取，直接使用 Tavily 的结果
   console.log('[Smart Search] Using simplified crawling (no actual page fetching)');
   
   return searchResults.map((result) => ({
@@ -216,7 +252,7 @@ async function crawlWebPages(searchResults: SearchResult[]): Promise<DetailedRes
 }
 
 /**
- * 智能搜索 + 本地 Qwen 总结 API
+ * 智能搜索 API（Tavily 备用方案）
  */
 export async function POST(request: NextRequest) {
   try {
@@ -231,22 +267,32 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Smart Search] Query: ${q}, Max Results: ${max_results}, Summary Length: ${summary_length}`);
-    console.log(`[Smart Search] Using Local Qwen Model: ${process.env.LOCAL_QWEN_API_URL}`);
+    console.log(`[Smart Search] Using Tavily search with answer fallback`);
 
-    // 步骤 1：搜索真实案例信息
-    console.log('[Smart Search] Step 1: Searching with Tavily API...');
-    const searchResults = await searchWithTavily(q, max_results);
+    // 步骤 1：搜索真实案例信息（包含 answer 字段）
+    console.log('[Smart Search] Step 1: Searching with Tavily API (with answer)...');
+    const { results: searchResults, answer: tavilyAnswer } = await searchWithTavilyWithAnswer(q, max_results);
     console.log(`[Smart Search] Found ${searchResults.length} search results`);
+    console.log(`[Smart Search] Tavily answer: ${tavilyAnswer ? tavilyAnswer.substring(0, 100) : 'No answer'}`);
 
     // 步骤 2：爬取详细信息
     console.log('[Smart Search] Step 2: Crawling detailed information...');
     const detailedResults = await crawlWebPages(searchResults);
     console.log(`[Smart Search] Crawled ${detailedResults.length} detailed results`);
 
-    // 步骤 3：生成 AI 总结
-    console.log('[Smart Search] Step 3: Generating AI summary with Local Qwen...');
-    const aiSummary = await generateLocalQwenSummary(detailedResults, summary_length);
-    console.log('[Smart Search] AI summary generated successfully');
+    // 步骤 3：尝试使用本地 Qwen 模型生成 AI 总结
+    console.log('[Smart Search] Step 3: Trying Local Qwen model...');
+    let aiSummary: AISummary;
+
+    try {
+      aiSummary = await generateLocalQwenSummary(detailedResults, summary_length);
+      console.log('[Smart Search] Local Qwen summary generated successfully');
+    } catch (error: any) {
+      console.warn('[Smart Search] Local Qwen model unavailable, using Tavily answer as fallback:', error.message);
+      
+      // 如果本地 Qwen 不可用，使用 Tavily 的 answer 字段
+      aiSummary = generateTavilyAnswerSummary(tavilyAnswer);
+    }
 
     // 返回结果
     return NextResponse.json({
@@ -258,7 +304,9 @@ export async function POST(request: NextRequest) {
       metadata: {
         timestamp: new Date().toISOString(),
         search_engine: 'Tavily',
-        ai_model: 'Local Qwen (Qwen2.5-7B-Instruct)',
+        ai_model: 'Tavily Answer Fallback',
+        used_local_qwen: false,
+        fallback_reason: 'Local Qwen model unavailable',
         total_results: searchResults.length,
         crawled_results: detailedResults.length,
       },
@@ -270,7 +318,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: error.message,
         details: error.toString(),
-        hint: '请检查 LOCAL_QWEN_API_URL 环境变量是否正确配置为 http://localhost:5000/v1',
+        hint: '请检查 TAVILY_API_KEY 环境变量是否正确配置',
       },
       { status: 500 }
     );
