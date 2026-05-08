@@ -46,20 +46,29 @@ interface CaseExtraction {
   dataQuality: string;
 }
 
+// AI 模型调用：优先使用智谱 GLM-4-Flash（云端），回退到本地 Ollama Qwen
 async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<any> {
-  const localApiUrl = process.env.LOCAL_QWEN_API_URL || 'http://localhost:11434/v1';
+  const zhipuApiKey = process.env.ZAI_API_KEY;
+  const useZhipu = !!zhipuApiKey;
 
-  if (!localApiUrl) {
-    throw new Error('LOCAL_QWEN_API_URL environment variable is not set');
+  const apiUrl = useZhipu
+    ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+    : (process.env.LOCAL_QWEN_API_URL || 'http://localhost:11434/v1') + '/chat/completions';
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (useZhipu) {
+    headers['Authorization'] = `Bearer ${zhipuApiKey}`;
   }
 
-  const response = await fetch(`${localApiUrl}/chat/completions`, {
+  console.log(`[AI Model] Using ${useZhipu ? 'Zhipu GLM-4-Flash (cloud)' : 'Local Ollama Qwen'}`);
+
+  const response = await fetch(apiUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
-      model: 'qwen2.5:7b',
+      model: useZhipu ? 'glm-4-flash' : 'qwen2.5:7b',
       messages: [
         {
           role: 'system',
@@ -78,7 +87,7 @@ async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Local Qwen API error: ${response.status} - ${errorText}`);
+    throw new Error(`AI API error (${useZhipu ? 'Zhipu' : 'Ollama'}): ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
