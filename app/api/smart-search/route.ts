@@ -312,10 +312,30 @@ function checkFieldQuality(extraction: CaseExtraction): QualityReport[] {
   return checks;
 }
 
+// ==================== 字段名中英文映射 ====================
+const FIELD_NAMES: Record<string, string> = {
+  caseName: '案例名称',
+  location: '所在区位',
+  projectScale: '项目规模',
+  totalInvestment: '总投资额',
+  participants: '参与主体',
+  startDate: '起止时间',
+  awardStatus: '获奖情况',
+  caseType: '案例类型',
+  sustainabilityTargets: '可持续目标',
+  demonstrationValue: '示范意义',
+  projectIntroduction: '项目介绍',
+  constructionPhase: '建设阶段',
+  awardEvaluation: '项目获奖评价',
+  projectInitiatives: '项目举措',
+  infoSource: '信息来源',
+};
+
 // ==================== 单字段 AI 提取函数 ====================
 
 async function extractField(field: string, content: string, requirements: string, maxTokens: number = 1000): Promise<any> {
-  const prompt = `你是一名建筑案例信息提取专家。严格从以下网页内容中提取"${field}"字段的信息。
+  const fieldName = FIELD_NAMES[field] || field;
+  const prompt = `你是一名建筑案例信息提取专家。从以下网页内容中提取"${fieldName}"的信息。
 
 ## 字段要求
 ${requirements}
@@ -324,20 +344,24 @@ ${requirements}
 - 只提取原文中真实存在的信息
 - 用中文回答
 - 不编造任何事实、数据或人名
-- 如果原文中没有相关信息，返回"经多轮检索未找到${field}信息"
+- 如果原文中没有相关信息，JSON值设为空字符串""
 - 返回合法JSON
 
 ## 网页内容
 ${content.substring(0, 4000)}
 
-返回合法JSON：{"${field}": "提取结果"}`;
+返回合法JSON：{"result": "提取的结果"}`;
 
   try {
     const result = await callQwenModel(prompt, maxTokens);
-    return result[field];
+    const value = result.result !== undefined ? result.result : (result[field] || '');
+    if (!value || (typeof value === 'string' && value.length < 2)) {
+      return '';
+    }
+    return value;
   } catch (error: any) {
-    console.error(`[Extract Field] Error for ${field}:`, error.message);
-    return `经多轮检索未找到${field}信息`;
+    console.error(`[Extract Field] Error for ${fieldName}:`, error.message);
+    return '';
   }
 }
 
@@ -551,19 +575,19 @@ ${currentContent.substring(0, 5000)}
     // ====== 构建提取结果 ======
     const extraction: CaseExtraction = {
       caseName: caseName || title.replace(/\[PDF\]|\[DOC\]/g, '').trim(),
-      location: location || '经多轮检索未找到区位信息',
-      projectScale: projectScale || '经多轮检索未找到规模信息',
-      totalInvestment: totalInvestment || '经多轮检索未找到投资信息',
-      participants: participants || '经多轮检索未找到参与单位信息',
-      startDate: startDate || '经多轮检索未找到时间信息',
+      location: location || '无',
+      projectScale: projectScale || '无',
+      totalInvestment: totalInvestment || '无',
+      participants: participants || '无',
+      startDate: startDate || '无',
       endDate: '',
       awardStatus: awardStatus || '未检索到获奖信息',
-      caseType: caseType || '经多轮检索未找到类型信息',
+      caseType: caseType || '无',
       sustainabilityTargets,
-      demonstrationValue: demonstrationValue || '经多轮检索未找到示范意义信息',
-      projectIntroduction: projectIntroduction || '经多轮检索未找到项目介绍信息',
+      demonstrationValue: demonstrationValue || '无',
+      projectIntroduction: projectIntroduction || '无',
       constructionPhase,
-      awardEvaluation: awardEvaluation || '经多轮检索未找到获奖评价信息',
+      awardEvaluation: awardEvaluation || '无',
       projectInitiatives,
       infoSource,
       caseImages,
@@ -613,19 +637,19 @@ ${currentContent.substring(0, 5000)}
   // 不应到达这里，但安全起见
   return {
     caseName: title,
-    location: '经多轮检索未找到区位信息',
-    projectScale: '经多轮检索未找到规模信息',
-    totalInvestment: '经多轮检索未找到投资信息',
-    participants: '经多轮检索未找到参与单位信息',
-    startDate: '经多轮检索未找到时间信息',
+    location: '无',
+    projectScale: '无',
+    totalInvestment: '无',
+    participants: '无',
+    startDate: '无',
     endDate: '',
     awardStatus: '未检索到获奖信息',
-    caseType: '经多轮检索未找到类型信息',
+    caseType: '无',
     sustainabilityTargets: [],
-    demonstrationValue: '经多轮检索未找到示范意义信息',
-    projectIntroduction: '经多轮检索未找到项目介绍信息',
+    demonstrationValue: '无',
+    projectIntroduction: '无',
     constructionPhase: [],
-    awardEvaluation: '经多轮检索未找到获奖评价信息',
+    awardEvaluation: '无',
     projectInitiatives: [],
     infoSource: urls.slice(0, 5).join('\n'),
     caseImages: [],
@@ -721,18 +745,17 @@ export async function POST(request: NextRequest) {
     // ====== 搜索阶段 ======
     console.log('[Smart Search] Step 1: Searching with Tavily...');
 
-    const relatedKeywords = ['建筑案例', '城市规划', '生态城', '绿色建筑', '项目案例', '示范工程'];
+    // 更智能的查询优化：根据查询内容补充关键词
     let optimizedQuery = q;
-    const hasKeyword = relatedKeywords.some(keyword => q.includes(keyword));
-    if (!hasKeyword) {
-      optimizedQuery = `${q} ${relatedKeywords[0]}`;
-      console.log(`[Smart Search] Optimized query: "${q}" → "${optimizedQuery}"`);
+    if (!q.includes('案例') && !q.includes('项目') && !q.includes('规划')) {
+      optimizedQuery = `${q} 项目案例 规划`;
     }
+    console.log(`[Smart Search] Optimized query: "${q}" → "${optimizedQuery}"`);
 
     let rawSearchResults: SearchResult[] = [];
 
     try {
-      rawSearchResults = await searchWithTavily(optimizedQuery, max_results);
+      rawSearchResults = await searchWithTavily(optimizedQuery, Math.max(max_results, 5));
       console.log(`[Smart Search] Tavily returned ${rawSearchResults.length} results`);
     } catch (tavilyError: any) {
       console.warn('[Smart Search] Tavily failed, falling back to web-search:', tavilyError.message);
