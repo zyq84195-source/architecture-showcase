@@ -62,7 +62,7 @@ async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<
       messages: [
         {
           role: 'system',
-          content: 'You are an architecture expert. Always return valid JSON only, no markdown, no extra text. Be extremely detailed and accurate.'
+          content: '你是一名建筑案例信息提取专家。必须用中文回答。只返回合法 JSON，不要 markdown 代码块、不要额外文字。严格从提供的内容中提取真实信息，绝不编造、不虚构、不推测。如果内容中没有相关信息，对应字段填空字符串或空数组。忽略所有网站导航、欢迎语、登录注册等非正文内容。'
         },
         {
           role: 'user',
@@ -305,26 +305,18 @@ function extractCaseType(content: string): string {
  */
 async function extractDemonstrationValue(content: string): Promise<string> {
   const prompt = `
-Extract demonstration value and innovation points from the following content.
+从以下内容中提取项目的示范意义和创新点。
 
-## CRITICAL REQUIREMENTS
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的信息
+- 如果原文中没有，返回空字符串
+- 绝不编造
 
-**Summary in keyword format (3 keywords):**
-{"demonstration_keywords": ["keyword1", "keyword2", "keyword3"]}
+内容：${content.substring(0, 3000)}
 
-**Detailed explanation (300-800 chars):**
-- List 3 innovation points in detail
-- Explain what policies, organizations, or technical standards were broken through
-- Explain the significance of these innovations
-- Format: "创新点1：详细说明（是否突破政策、组织形式、技术标准等）"
-
-Content: ${content}
-
-Return ONLY valid JSON:
-{
-  "demonstration_keywords": ["string array, 3 keywords],
-  "demonstration_explanation": "string (300-800 chars, 3 innovation points with detailed explanation)"
-}
+只返回合法 JSON：
+{"demonstration_keywords": ["string"], "demonstration_explanation": "string"}
 `;
 
   try {
@@ -354,19 +346,18 @@ Return ONLY valid JSON:
  */
 async function extractProjectIntroduction(content: string): Promise<string> {
   const prompt = `
-Extract project background and introduction from the following content.
+从以下内容中提取项目背景和介绍信息。
 
-## CRITICAL REQUIREMENTS
-- Minimum 300 characters
-- Include: project background, objectives, context, scale, key features
-- Be detailed and comprehensive
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的信息，绝不编造
+- 如果原文中没有项目介绍信息，返回空字符串
+- 最多500字
 
-Content: ${content}
+内容：${content.substring(0, 3000)}
 
-Return ONLY valid JSON:
-{
-  "projectIntroduction": "string (≥300 chars, detailed project background and introduction)"
-}
+只返回合法 JSON：
+{"projectIntroduction": "string"}
 `;
 
   try {
@@ -383,56 +374,27 @@ Return ONLY valid JSON:
  */
 async function extractConstructionPhase(content: string): Promise<string[]> {
   const prompt = `
-Extract construction phases from the following content.
+从以下内容中提取项目建设阶段信息。
 
-## CRITICAL REQUIREMENTS
-- Extract at least 3 phases
-- Each phase must include:
-  - Time period
-  - What was done
-  - What goals were achieved
-- Total description length must be ≥450 characters
-- Format: "阶段名称（时间段）：做什么、完成什么目标"
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的时间节点和建设内容
+- 格式："阶段名称（时间段）：具体内容"
+- 如果原文中没有建设阶段信息，返回空数组
+- 绝不编造时间、内容
 
-Content: ${content}
+内容：${content.substring(0, 3000)}
 
-Return ONLY valid JSON:
-{
-  "constructionPhase": ["string array, each phase description ≥200 chars, total ≥450 chars"]
-}
+只返回合法 JSON：
+{"constructionPhase": ["string"]}
 `;
 
   try {
     const result = await callQwenModel(prompt, 2000);
-    let phases = result.constructionPhase || [];
-    
-    if (phases.length < 3) {
-      const years = content.match(/(\d{4})[年]/g);
-      if (years && years.length >= 2) {
-        phases = [
-          `规划设计阶段（${years[0]}年-${years[1]}年）：完成项目规划方案编制、可行性研究、方案报批等工作，确立项目总体布局、建设规模和建设标准。`,
-          `施工建设阶段（${years[1]}年-${years[2] || years[years.length-1]}年）：全面开展项目建设，包括基础设施、公共服务设施、配套工程等，按计划推进项目建设，确保工程质量和施工安全。`,
-          `持续运营阶段（${years[years.length-1] || years[1]}年至今）：项目全面建成后进入运营维护阶段，持续优化运营管理，提升服务质量和运行效率，实现项目的长期可持续发展。`
-        ];
-      }
-    }
-    
-    if (phases.length < 3) {
-      phases = [
-        `规划设计阶段（启动期）：完成项目规划方案编制、可行性研究、方案报批等工作，确立项目总体布局、建设规模和建设标准。`,
-        `施工建设阶段（建设期）：全面开展项目建设，包括基础设施、公共服务设施、配套工程等，按计划推进项目建设，确保工程质量和施工安全。`,
-        `持续运营阶段（运营期）：项目全面建成后进入运营维护阶段，持续优化运营管理，提升服务质量和运行效率，实现项目的长期可持续发展。`
-      ];
-    }
-    
-    return phases;
+    return result.constructionPhase || [];
   } catch (error) {
     console.error('[Extract Construction Phase] Error:', error);
-    return [
-      `规划设计阶段（启动期）：完成项目规划方案编制、可行性研究、方案报批等工作，确立项目总体布局、建设规模和建设标准。`,
-      `施工建设阶段（建设期）：全面开展项目建设，包括基础设施、公共服务设施、配套工程等，按计划推进项目建设，确保工程质量和施工安全。`,
-      `持续运营阶段（运营期）：项目全面建成后进入运营维护阶段，持续优化运营管理，提升服务质量和运行效率，实现项目的长期可持续发展。`
-    ];
+    return [];
   }
 }
 
@@ -441,78 +403,53 @@ Return ONLY valid JSON:
  */
 async function extractProjectInitiatives(content: string): Promise<string[]> {
   const prompt = `
-Extract project initiatives and implementation measures from the following content.
+从以下内容中提取项目举措和实施措施。
 
-## CRITICAL REQUIREMENTS
-- Extract at least 3-5 initiatives
-- Each initiative must include:
-  - What measures were taken
-  - What innovations were implemented
-  - How they contributed to project success
-- Total description length must be ≥700 characters
-- Be extremely detailed
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的举措
+- 如果原文中没有相关信息，返回空数组
+- 绝不编造
 
-Content: ${content}
+内容：${content.substring(0, 3000)}
 
-Return ONLY valid JSON:
-{
-  "projectInitiatives": ["string array, each initiative description ≥200 chars, total ≥700 chars"]
-}
+只返回合法 JSON：
+{"projectInitiatives": ["string"]}
 `;
 
   try {
     const result = await callQwenModel(prompt, 2000);
-    let initiatives = result.projectInitiatives || [];
-    
-    // 确保返回的是字符串数组
-    if (Array.isArray(initiatives) && initiatives.length > 0) {
-      // 如果是对象数组，提取为字符串数组
-      if (typeof initiatives[0] === 'object' && initiatives[0] !== null) {
-        console.log('[Extract Project Initiatives] Converting object array to string array');
-        initiatives = initiatives.map((item: any) => {
-          // 尝试提取各种可能的字段
-          if (typeof item === 'string') {
-            return item;
-          }
-          if (typeof item.initiative === 'string') {
-            return item.initiative;
-          }
-          if (typeof item.measuresTaken === 'string') {
-            return item.measuresTaken;
-          }
-          // 如果都不是，将对象转换为字符串
-          return JSON.stringify(item);
-        });
-      }
-      // 确保所有元素都是字符串
-      initiatives = initiatives.map(item => {
-        if (typeof item === 'string') {
-          return item;
-        }
-        return String(item);
-      });
-    }
-    
-    if (initiatives.length < 3) {
-      initiatives = [
-        `技术创新：项目采用了先进的绿色建筑技术和可持续设计方案，集成生态环保理念，实现资源节约和环境友好，突破传统建筑技术和标准。`,
-        `管理创新：建立了协同高效的项目管理机制，整合多方资源，优化决策流程，提高管理效率，确保项目顺利推进。`,
-        `数据应用：运用物联网、大数据、人工智能等技术，实现项目全生命周期的数字化管理，提高运营效率和决策科学性。`,
-        `示范引领：项目创新性地将生态理念融入城市规划、建设和运营各环节，为同类项目提供了可借鉴的成功模式。`,
-        `可持续发展：建立长效运营机制，持续优化项目运行，实现环境效益、社会效益和经济效益的统一。`
-      ];
-    }
-    
-    return initiatives;
   } catch (error) {
     console.error('[Extract Project Initiatives] Error:', error);
-    return [
-      `技术创新：项目采用了先进的绿色建筑技术和可持续设计方案，集成生态环保理念，实现资源节约和环境友好。`,
-      `管理创新：建立了协同高效的项目管理机制，整合多方资源，优化决策流程，提高管理效率。`,
-      `数据应用：运用物联网、大数据、人工智能等技术，实现项目全生命周期的数字化管理。`,
-      `示范引领：项目创新性地将生态理念融入城市规划、建设和运营各环节。`,
-      `可持续发展：建立长效运营机制，持续优化项目运行，实现环境效益、社会效益和经济效益的统一。`
-    ];
+    return [];
+  }
+}
+
+/**
+ * AI 提取项目规模
+ */
+async function extractProjectScale(content: string): Promise<string> {
+  const prompt = `
+从以下内容中提取项目规模信息。
+
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的规模信息（面积、栋数、投资额等）
+- 如果原文中没有，返回空字符串
+- 绝不编造
+
+内容：${content.substring(0, 3000)}
+
+只返回合法 JSON：
+{"projectScale": "string"}
+`;
+
+  try {
+    const result = await callQwenModel(prompt, 300);
+    return result.projectScale || '';
+  } catch (error) {
+    console.error('[Extract Project Scale] Error:', error);
+    return '';
   }
 }
 
@@ -521,26 +458,25 @@ Return ONLY valid JSON:
  */
 async function extractAwardEvaluation(content: string): Promise<string> {
   const prompt = `
-Extract award evaluation and recognition information from the following content.
+从以下内容中提取获奖评价信息。
 
-## CRITICAL REQUIREMENTS
-- If awards exist: Extract award details and evaluation (格式：评价者单位——评价者姓名)
-- If no awards: Return "未检索到获奖评价信息"
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的获奖信息
+- 如果没有获奖信息，返回空字符串
+- 绝不编造
 
-Content: ${content}
+内容：${content.substring(0, 3000)}
 
-Return ONLY valid JSON:
-{
-  "awardEvaluation": "string (100-300 chars, format: 单位——姓名 if awards exist, or 未检索到获奖评价信息)"
-}
+只返回合法 JSON：
+{"awardEvaluation": "string"}
 `;
 
   try {
     const result = await callQwenModel(prompt, 400);
-    return result.awardEvaluation || '未检索到获奖评价信息';
   } catch (error) {
     console.error('[Extract Award Evaluation] Error:', error);
-    return '未检索到获奖评价信息';
+    return '';
   }
 }
 
@@ -549,51 +485,26 @@ Return ONLY valid JSON:
  */
 async function extractSustainabilityTargets(content: string): Promise<string[]> {
   const prompt = `
-Extract sustainability targets from the following content.
+从以下内容中提取项目的可持续目标。
 
-## CRITICAL REQUIREMENTS
+## 严格要求
+- 用中文回答
+- 只能从以下6个目标中选择：宜居、智慧、人文、创新、绿色、韧性
+- 只返回项目实际体现的目标，不强行匹配
+- 如果无法判断，返回空数组
 
-You MUST select from these 6 official sustainability targets:
-- 宜居
-- 智慧
-- 人文
-- 创新
-- 绿色
-- 韧性
+内容：${content.substring(0, 3000)}
 
-Only return targets that the project actually demonstrates. Do NOT force selection.
-
-Return ONLY valid JSON:
-{
-  "sustainabilityTargets": ["string array, 1-4 items selected from: 宜居、智慧、人文、创新、绿色、韧性"]
-}
+只返回合法 JSON：
+{"sustainabilityTargets": ["string"]}
 `;
 
   try {
     const result = await callQwenModel(prompt, 500);
-    let targets = result.sustainabilityTargets || [];
-
-    // 确保返回的是字符串数组
-    if (Array.isArray(targets) && targets.length > 0) {
-      // 如果是对象数组，提取 description 字段
-      const targetStrings = targets.map((t: any) => {
-        if (typeof t === 'string') return t;
-        return t.description || t.target || JSON.stringify(t);
-      });
-
-      if (targetStrings.length > 0) {
-        targets = targetStrings;
-      }
-    }
-
-    if (targets.length < 1) {
-      targets = ['绿色'];
-    }
-
-    return targets;
+    return result.sustainabilityTargets || [];
   } catch (error) {
     console.error('[Extract Sustainability Targets] Error:', error);
-    return ['绿色'];
+    return [];
   }
 }
 
@@ -751,11 +662,33 @@ async function fetchPageContent(url: string): Promise<string> {
       const bodyText = bodyMatch[1]
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+        .replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '')
         .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
+        .replace(/&[a-zA-Z]+;/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
-      return bodyText.substring(0, 10000); // 限制为 10000 字符
+      // 跳过网站导航文本，只保留正文内容
+      const lines = bodyText.split(/[.。!?！？\n]/);
+      const meaningfulLines: string[] = [];
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.length < 10) continue;
+        if (/^(首页|登录|注册|注销|导航|搜索|下载|上传|版权|ICP|备案)/.test(trimmed)) continue;
+        if (/^(您\s*的\s*位\s*置|当前位置|面包屑)/.test(trimmed)) continue;
+        meaningfulLines.push(trimmed);
+      }
+      const cleanText = meaningfulLines.join(' ');
+
+      return cleanText.substring(0, 10000);
     }
 
     return '';
@@ -919,16 +852,27 @@ async function filterAndRankResults(query: string, searchResults: SearchResult[]
 async function extractAllInformation(content: string, title: string, url: string): Promise<CaseExtraction> {
   console.log('[Master Extraction] Starting extraction for:', title);
 
+  // 清理 HTML 实体，防止污染提取结果
+  const cleanContent = content
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&[a-zA-Z]+;/g, ' '); // 其余 HTML 实体
+
   const result = {
     caseName: title,
-    location: extractLocation(content),
-    projectScale: '中新建在天津的新生态城项目，关于改善生态环境、建设生态文明的战略性合作。',
-    totalInvestment: extractInvestment(content),
-    participants: extractParticipants(content),
-    startDate: extractStartDate(content),
+    location: extractLocation(cleanContent),
+    projectScale: '',
+    totalInvestment: extractInvestment(cleanContent),
+    participants: extractParticipants(cleanContent),
+    startDate: extractStartDate(cleanContent),
     endDate: '',
-    awardStatus: extractAwardStatus(content),
-    caseType: extractCaseType(content),
+    awardStatus: extractAwardStatus(cleanContent),
+    caseType: extractCaseType(cleanContent),
     sustainabilityTargets: [],
     demonstrationValue: '',
     projectIntroduction: '',
@@ -936,18 +880,18 @@ async function extractAllInformation(content: string, title: string, url: string
     awardEvaluation: '',
     projectInitiatives: [],
     infoSource: url,
-    caseImages: extractImages(content),
-    extractionSource: '精细提取版（正则匹配 + AI 辅助，解决所有11个问题）',
-    dataQuality: '极高（所有字段都有值）'
+    caseImages: extractImages(cleanContent),
+    extractionSource: '精细提取版（正则匹配 + AI 辅助）',
+    dataQuality: '待评估'
   };
 
   // 并行提取（减少时间）
   try {
     const [demoValue, intro, awardEval, sustainability] = await Promise.all([
-      extractDemonstrationValue(content),
-      extractProjectIntroduction(content),
-      extractAwardEvaluation(content),
-      extractSustainabilityTargets(content)
+      extractDemonstrationValue(cleanContent),
+      extractProjectIntroduction(cleanContent),
+      extractAwardEvaluation(cleanContent),
+      extractSustainabilityTargets(cleanContent)
     ]);
     
     result.demonstrationValue = demoValue;
@@ -962,11 +906,13 @@ async function extractAllInformation(content: string, title: string, url: string
 
   // 串行提取（减少时间）
   try {
-    const phases = await extractConstructionPhase(content);
-    const initiatives = await extractProjectInitiatives(content);
+    const phases = await extractConstructionPhase(cleanContent);
+    const initiatives = await extractProjectInitiatives(cleanContent);
+    const scale = await extractProjectScale(cleanContent);
     
     result.constructionPhase = phases;
     result.projectInitiatives = initiatives;
+    if (!result.projectScale && scale) result.projectScale = scale;
     
     console.log('[Master Extraction] Complex extraction completed');
   } catch (error) {
@@ -1000,6 +946,28 @@ async function extractAllInformation(content: string, title: string, url: string
     console.error('[Contradiction Detection] Error:', error);
   }
 
+  // 根据实际提取结果评估数据质量
+  const filledFields = [
+    result.location,
+    result.projectScale,
+    result.totalInvestment,
+    result.participants,
+    result.startDate,
+    result.awardStatus,
+    result.caseType,
+    result.projectIntroduction,
+    result.demonstrationValue,
+  ].filter(v => v && v.length > 0 && !v.startsWith('未')).length;
+
+  if (filledFields >= 7) {
+    result.dataQuality = '高（多字段已提取）';
+  } else if (filledFields >= 3) {
+    result.dataQuality = '中（部分字段已提取）';
+  } else {
+    result.dataQuality = '低（信息较少）';
+  }
+
+  console.log(`[Master Extraction] Data quality: ${result.dataQuality} (${filledFields}/9 fields filled)`);
   console.log('[Master Extraction] Extraction completed');
   return result;
 }
