@@ -214,7 +214,7 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
       include_raw_content: false,
       include_images: false,
       include_domains: [],
-      exclude_domains: ['zhihu.com', 'baike.baidu.com', 'douyin.com'],
+      exclude_domains: ['zhihu.com', 'baike.baidu.com', 'douyin.com', 'scribd.com', 'tieba.baidu.com', 'wenku.baidu.com'],
     }),
   });
 
@@ -226,15 +226,53 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
   const data = await response.json();
   console.log(`[Tavily] Raw results: ${data.results?.length}`);
 
-  return (data.results || []).map((item: any) => ({
-    title: item.title || '未命名',
-    url: item.url,
-    snippet: (item.content || '').substring(0, 500),
-    content: item.content || '',
-    source: 'tavily',
-    score: item.score || 50,
-    published_date: item.published_date || '',
-  }));
+  return (data.results || []).map((item: any) => {
+    // Tavily 的 content 包含全文，提取有意义的摘要
+    const rawContent = item.content || '';
+    let snippet = rawContent;
+
+    // 策略 1：如果 Tavily 有单独的 snippet/description 字段，优先用
+    if (item.snippet && item.snippet.length > 20) {
+      snippet = item.snippet;
+    }
+
+    // 策略 2：跳过网站导航文本，找到第一段有意义的正文
+    const lines = rawContent.split(/[\n\r]+/);
+    const meaningfulLines: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // 跳过太短的行（导航菜单）、表格分隔线、Markdown 标记
+      if (trimmed.length < 10) continue;
+      if (/^[|\-#*=\d\.]+$/.test(trimmed)) continue;
+      // 跳过常见网站导航文本模式
+      if (/^(首页|导航|菜单|登录|注册|搜索|下载|上传|分享)/.test(trimmed)) continue;
+      if (/^(省人大|省政府|省政协|党务|市县|工作动态)/.test(trimmed)) continue;
+      meaningfulLines.push(trimmed);
+      if (meaningfulLines.length >= 3) break;
+    }
+
+    if (meaningfulLines.length > 0) {
+      snippet = meaningfulLines.join(' ');
+    }
+
+    // 最终清理
+    snippet = snippet
+      .replace(/\|/g, ' ')
+      .replace(/---+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 200);
+
+    return {
+      title: item.title || '未命名',
+      url: item.url,
+      snippet,
+      content: rawContent,
+      source: 'tavily',
+      score: item.score || 50,
+      published_date: item.published_date || '',
+    };
+  });
 }
 
 /**
