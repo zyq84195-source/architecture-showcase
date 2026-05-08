@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { Plus, Search, Edit, Trash2, PlusCircle } from 'lucide-react';
 import CaseForm from '@/components/admin/CaseForm';
 
+const ADMIN_PASSWORD = 'arch2026admin'; // 管理员密码
+const ADMIN_SESSION_KEY = 'arch_admin_auth';
+
 export default function CasesPage() {
   const router = useRouter();
   const [cases, setCases] = useState<any[]>([]);
@@ -15,6 +18,29 @@ export default function CasesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    // 检查是否已登录
+    const session = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (session === 'authenticated') {
+      setIsAdmin(true);
+      fetchCases();
+    }
+  }, []);
+
+  const handleLogin = () => {
+    if (passwordInput === ADMIN_PASSWORD) {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, 'authenticated');
+      setIsAdmin(true);
+      setAuthError('');
+      fetchCases();
+    } else {
+      setAuthError('密码错误');
+    }
+  };
 
   useEffect(() => {
     fetchCases();
@@ -80,6 +106,48 @@ export default function CasesPage() {
   };
 
   const categories = ['住宅', '商业', '公共建筑', '文化建筑', '工业建筑', '其他'];
+
+  // 未登录时显示密码验证页
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-sm w-full mx-4">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-white text-2xl">🔒</span>
+            </div>
+            <h1 className="text-xl font-bold text-slate-900">管理员验证</h1>
+            <p className="text-sm text-slate-500 mt-1">请输入管理员密码</p>
+          </div>
+          <div className="space-y-4">
+            <input
+              type="password"
+              placeholder="输入管理员密码"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {authError && (
+              <p className="text-red-500 text-sm">{authError}</p>
+            )}
+            <button
+              onClick={handleLogin}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              验证
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="w-full px-4 py-2 text-slate-500 hover:text-slate-700 text-sm"
+            >
+              返回首页
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
