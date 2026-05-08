@@ -514,7 +514,12 @@ ${currentContent.substring(0, 4000)}
 返回合法JSON：{"sustainabilityTargets": ["目标1", "目标2"]}`;
 
       const stResult = await callQwenModel(stPrompt, 300);
-      sustainabilityTargets = stResult.sustainabilityTargets || [];
+      const rawST = stResult.sustainabilityTargets || [];
+      sustainabilityTargets = rawST.map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) return JSON.stringify(item);
+        return String(item);
+      });
     } catch (error: any) {
       console.error('[Extract All Fields] sustainabilityTargets error:', error.message);
     }
@@ -548,7 +553,15 @@ ${currentContent.substring(0, 5000)}
 返回合法JSON：{"constructionPhase": ["阶段1详细说明（时间段+做了什么+完成目标）", "阶段2详细说明..."]}`;
 
       const cpResult = await callQwenModel(cpPrompt, 2500);
-      constructionPhase = cpResult.constructionPhase || [];
+      // 安全转换：确保每条都是字符串，处理AI返回对象的情况
+      const rawCP = cpResult.constructionPhase || [];
+      constructionPhase = rawCP.map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) {
+          return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
+        }
+        return String(item);
+      });
     } catch (error: any) {
       console.error('[Extract All Fields] constructionPhase error:', error.message);
     }
@@ -577,7 +590,14 @@ ${currentContent.substring(0, 5000)}
 返回合法JSON：{"projectInitiatives": ["举措1详细说明（包括具体做法、创新点、效果）", "举措2详细说明..."]}`;
 
       const piResult = await callQwenModel(piPrompt, 3000);
-      projectInitiatives = piResult.projectInitiatives || [];
+      const rawPI = piResult.projectInitiatives || [];
+      projectInitiatives = rawPI.map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) {
+          return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
+        }
+        return String(item);
+      });
     } catch (error: any) {
       console.error('[Extract All Fields] projectInitiatives error:', error.message);
     }
