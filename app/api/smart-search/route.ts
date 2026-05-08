@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 /**
  * 智能搜索 API（全字段 AI 提取版）
  *
@@ -432,275 +432,247 @@ async function supplementarySearch(
 
 // ==================== 核心提取函数 ====================
 
+// ==================== 核心提取函数 ====================
+
+// 安全转换数组字段：确保每条都是字符串
+function safeStringArray(arr: any[]): string[] {
+  return (arr || []).map((item: any) => {
+    if (typeof item === 'string') return item;
+    if (typeof item === 'object' && item !== null) {
+      return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
+    }
+    return String(item);
+  });
+}
+
+// 辅助函数：构建 infoSource 字符串
+function buildInfoSource(urlList: string[]): string {
+  return urlList.slice(0, 5).map(url => {
+    try {
+      const hostname = new URL(url).hostname;
+      return `${hostname}\n${url}`;
+    } catch {
+      return url;
+    }
+  }).join('\n\n');
+}
+
 async function extractAllFields(
   content: string,
   title: string,
   urls: string[],
   searchFn: (query: string) => Promise<SearchResult[]>
 ): Promise<CaseExtraction> {
-  console.log('[Extract All Fields] Starting extraction for:', title);
+  const cleanTitle = title.replace(/\[PDF\]|\[DOC\]/g, '').trim();
+  console.log('[Extract All Fields] Starting 3-phase extraction for:', cleanTitle);
 
-  const MAX_ROUNDS = 2;
-  let supplementaryContent = '';
+  // ====== Phase 1：一次批量提取所有字段 ======
+  console.log('[Extract All Fields] Phase 1: Batch extraction from web content');
 
-  // 辅助函数：构建 infoSource 字符串
-  const buildInfoSource = (urlList: string[]): string => {
-    return urlList.slice(0, 5).map(url => {
-      // 尝试提取域名作为来源名
-      try {
-        const hostname = new URL(url).hostname;
-        return `${hostname}\n${url}`;
-      } catch {
-        return url;
-      }
-    }).join('\n\n');
-  };
+  const batchPrompt = `你是一名建筑案例信息提取专家。从以下网页内容中一次性提取所有字段信息。
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    console.log(`[Extract All Fields] Round ${round + 1}/${MAX_ROUNDS}`);
+## 提取要求
+- caseName：正式项目全称
+- location："XX省-XX市-XX区县"格式，必须用"-"分隔
+- projectScale：用地面积+规划等级，或适用范围
+- totalInvestment：具体投资金额（如"总投资约15亿元"）
+- participants：委托方、建设方、规划设计方、编制单位（格式："委托方：XX；规划设计方：XX"）
+- startDate：起止时间（含编制/开工/竣工）
+- endDate：结束时间（如有）
+- awardStatus：具体奖项名称+颁奖机构
+- caseType：规划类型+建设状态
+- sustainabilityTargets：从[宜居、智慧、人文、创新、绿色、韧性]中选1-4个
+- demonstrationValue：关键词+创新点阐述（≥200字）
+- projectIntroduction：项目背景介绍（≥300字）
+- constructionPhase：建设阶段详情（纯字符串数组，每条≥80字）
+- awardEvaluation：评价者单位+姓名
+- projectInitiatives：项目举措详情（纯字符串数组，每条≥80字）
 
-    const currentContent = round === 0 ? content : content + '\n\n' + supplementaryContent;
-
-    // ====== 第一轮：逐字段提取 ======
-
-    // 1. caseName（案例名称）
-    const caseName = await extractField('caseName', currentContent,
-      '从搜索结果中提取正式项目名称。去掉PDF、DOC等前缀。返回项目全称。', 300);
-
-    // 2. location（所在区位）
-    const location = await extractField('location', currentContent,
-      '格式为"XX省-XX市-XX区县"。如果只能找到省市，就写"XX省-XX市"。如果找不到具体区县，根据内容推断。必须包含"-"分隔符。', 300);
-
-    // 3. projectScale（项目规模）
-    const projectScale = await extractField('projectScale', currentContent,
-      '如果是规划类：说明用地面积+规划等级。如果是导则/条例：说明适用范围/针对对象。示例："用地面积约4.69公顷，属于市级历史文化街区保护规划"', 300);
-
-    // 4. totalInvestment（总投资额）
-    const totalInvestment = await extractField('totalInvestment', currentContent,
-      '提取具体投资金额，如"总投资约15亿元人民币"。找不到就写"经多轮检索未找到投资信息"', 300);
-
-    // 5. participants（参与主体）
-    const participants = await extractField('participants', currentContent,
-      '分别列出：委托方、建设方、规划设计方、编制单位。编制单位要写全称，所有参与单位都要列出。格式示例："委托方：南京市秦淮区人民政府；规划设计方：东南大学建筑设计研究院；编制单位：XX规划设计院"。找不到就写"经多轮检索未找到参与单位信息"', 800);
-
-    // 6. startDate（起止时间）
-    const startDate = await extractField('startDate', currentContent,
-      '格式："XXXX年-X月 起至 XXXX年-X月"。补充编制时间、是否有上位规划/先行文件及其时间。示例："2017年启动规划编制，2019年完成并实施。上位规划：《南京市总体规划(2018-2035)>"。找不到就写"经多轮检索未找到时间信息"', 500);
-
-    // 7. awardStatus（获奖情况）
-    const awardStatus = await extractField('awardStatus', currentContent,
-      '列出具体奖项名称，包括颁奖机构和奖项级别。无获奖标明"未检索到获奖信息"', 400);
-
-    // 8. caseType（案例类型）
-    const caseType = await extractField('caseType', currentContent,
-      '标明规划类型（城市更新规划、乡村设计规划、生态城市规划等）+ 建设状态（持续实施中、已建成并持续运营中等）。示例："城市更新规划（已建成并持续运营中）"', 300);
-
-    // 9. sustainabilityTargets（可持续目标）
-    let sustainabilityTargets: string[] = [];
-    try {
-      const stPrompt = `你是一名建筑案例信息提取专家。从以下内容中判断该项目体现了哪些可持续目标。
-
-## 可选目标（只能从中选择1-4个）
-宜居、智慧、人文、创新、绿色、韧性
-
-## 严格要求
-- 只返回项目实际体现的目标
+## 严格规则
+- 只提取原文中真实存在的信息，不编造
 - 用中文
+- 找不到的字段值设为空字符串""
+- 数组字段每条必须是纯字符串，不要返回对象
+- 忽略网站导航、菜单、登录等非正文内容
 - 返回合法JSON
 
 ## 网页内容
-${currentContent.substring(0, 4000)}
+${content.substring(0, 12000)}`;
 
-返回合法JSON：{"sustainabilityTargets": ["目标1", "目标2"]}`;
+  let extraction: CaseExtraction;
+  try {
+    const batchResult = await callQwenModel(batchPrompt, 4000);
+    console.log('[Extract All Fields] Phase 1 complete, got fields:', Object.keys(batchResult).join(', '));
 
-      const stResult = await callQwenModel(stPrompt, 300);
-      const rawST = stResult.sustainabilityTargets || [];
-      sustainabilityTargets = rawST.map((item: any) => {
-        if (typeof item === 'string') return item;
-        if (typeof item === 'object' && item !== null) return JSON.stringify(item);
-        return String(item);
-      });
-    } catch (error: any) {
-      console.error('[Extract All Fields] sustainabilityTargets error:', error.message);
-    }
-
-    // 10. demonstrationValue（示范意义）
-    const demonstrationValue = await extractField('demonstrationValue', currentContent,
-      '格式：第一行3个关键词，如"关键词：社区参与、微更新、历史保护"，然后分点说明每个创新点，解释是否突破了政策制度、组织形式或技术标准。示例："关键词：社区参与、规划创新、历史保护\\n\\n创新点1：首创\\"院落\\"为单元的渐进式更新模式，突破了传统\\"大拆大建\\"的组织形式。\\n创新点2：建立居民协商机制，突破了自上而下的规划制度。"', 1500);
-
-    // 11. projectIntroduction（项目介绍，≥300字）
-    const projectIntroduction = await extractField('projectIntroduction', currentContent,
-      '项目背景介绍，不少于300字。内容应包括：项目所在地背景、面临的问题、更新目标。只从原文提取，不编造。如果原文内容不足，尽可能详细描述。', 2000);
-
-    // 12. constructionPhase（建设阶段，≥450字）
-    let constructionPhase: string[] = [];
-    try {
-      const cpPrompt = `你是一名建筑案例信息提取专家。从以下内容中提取项目建设阶段信息。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的时间节点和建设内容
-- 体现阶段性特点，每个阶段说明时间段+做了什么+完成了什么目标
-- 总字数不少于450字
-- 尽可能详细，从原文中提取所有阶段信息
-- 返回字符串数组，每条一个阶段的详细说明
-- 不编造
-- 返回合法JSON
-
-## 网页内容
-${currentContent.substring(0, 5000)}
-
-返回合法JSON：{"constructionPhase": ["阶段1详细说明（时间段+做了什么+完成目标）", "阶段2详细说明..."]}`;
-
-      const cpResult = await callQwenModel(cpPrompt, 2500);
-      // 安全转换：确保每条都是字符串，处理AI返回对象的情况
-      const rawCP = cpResult.constructionPhase || [];
-      constructionPhase = rawCP.map((item: any) => {
-        if (typeof item === 'string') return item;
-        if (typeof item === 'object' && item !== null) {
-          return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
-        }
-        return String(item);
-      });
-    } catch (error: any) {
-      console.error('[Extract All Fields] constructionPhase error:', error.message);
-    }
-
-    // 13. awardEvaluation（项目获奖评价）
-    const awardEvaluation = await extractField('awardEvaluation', currentContent,
-      '格式："评价者单位——评价者姓名"。示例："中国城市规划学会——张某某"。找不到就写"经多轮检索未找到获奖评价信息"', 400);
-
-    // 14. projectInitiatives（项目举措，≥700字）
-    let projectInitiatives: string[] = [];
-    try {
-      const piPrompt = `你是一名建筑案例信息提取专家。从以下内容中提取项目举措和实施措施。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的举措
-- 是"示范意义"的详细阐述，具体解释措施和创新
-- 总字数不少于700字，尽可能详细
-- 返回字符串数组，每条一个举措的详细说明
-- 不编造
-- 返回合法JSON
-
-## 网页内容
-${currentContent.substring(0, 5000)}
-
-返回合法JSON：{"projectInitiatives": ["举措1详细说明（包括具体做法、创新点、效果）", "举措2详细说明..."]}`;
-
-      const piResult = await callQwenModel(piPrompt, 3000);
-      const rawPI = piResult.projectInitiatives || [];
-      projectInitiatives = rawPI.map((item: any) => {
-        if (typeof item === 'string') return item;
-        if (typeof item === 'object' && item !== null) {
-          return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
-        }
-        return String(item);
-      });
-    } catch (error: any) {
-      console.error('[Extract All Fields] projectInitiatives error:', error.message);
-    }
-
-    // 15. infoSource（信息来源）
-    const infoSource = buildInfoSource(urls);
-
-    // 16. caseImages（示意图片）
-    const imagePatterns = [
-      /https?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
-    ];
-    const caseImages: string[] = [];
-    for (const pattern of imagePatterns) {
-      const matches = currentContent.match(pattern);
-      if (matches) {
-        caseImages.push(...matches.slice(0, 10));
-      }
-    }
-
-    // ====== 构建提取结果 ======
-    const extraction: CaseExtraction = {
-      caseName: caseName || title.replace(/\[PDF\]|\[DOC\]/g, '').trim(),
-      location: location || '无',
-      projectScale: projectScale || '无',
-      totalInvestment: totalInvestment || '无',
-      participants: participants || '无',
-      startDate: startDate || '无',
-      endDate: '',
-      awardStatus: awardStatus || '未检索到获奖信息',
-      caseType: caseType || '无',
-      sustainabilityTargets,
-      demonstrationValue: demonstrationValue || '无',
-      projectIntroduction: projectIntroduction || '无',
-      constructionPhase,
-      awardEvaluation: awardEvaluation || '无',
-      projectInitiatives,
-      infoSource,
-      caseImages,
-      extractionSource: `全字段 AI 提取版（${round + 1}轮）`,
+    extraction = {
+      caseName: batchResult.caseName || cleanTitle,
+      location: batchResult.location || '',
+      projectScale: batchResult.projectScale || '',
+      totalInvestment: batchResult.totalInvestment || '',
+      participants: batchResult.participants || '',
+      startDate: batchResult.startDate || '',
+      endDate: batchResult.endDate || '',
+      awardStatus: batchResult.awardStatus || '',
+      caseType: batchResult.caseType || '',
+      sustainabilityTargets: safeStringArray(batchResult.sustainabilityTargets),
+      demonstrationValue: batchResult.demonstrationValue || '',
+      projectIntroduction: batchResult.projectIntroduction || '',
+      constructionPhase: safeStringArray(batchResult.constructionPhase),
+      awardEvaluation: batchResult.awardEvaluation || '',
+      projectInitiatives: safeStringArray(batchResult.projectInitiatives),
+      infoSource: buildInfoSource(urls),
+      caseImages: [],
+      extractionSource: '批量AI提取',
       dataQuality: '待评估',
     };
+  } catch (error: any) {
+    console.error('[Extract All Fields] Phase 1 failed:', error.message);
+    extraction = {
+      caseName: cleanTitle,
+      location: '', projectScale: '', totalInvestment: '', participants: '',
+      startDate: '', endDate: '', awardStatus: '', caseType: '',
+      sustainabilityTargets: [], demonstrationValue: '', projectIntroduction: '',
+      constructionPhase: [], awardEvaluation: '', projectInitiatives: [],
+      infoSource: buildInfoSource(urls), caseImages: [],
+      extractionSource: 'Phase1失败', dataQuality: '低',
+    };
+  }
 
-    // ====== 质量检查 ======
-    if (round < MAX_ROUNDS - 1) {
-      const qualityReports = checkFieldQuality(extraction);
-      const failedFields = qualityReports.filter(r => !r.passed);
+  // ====== Phase 2：AI 知识补充空字段 ======
+  const fieldChecks: [string, string][] = [
+    ['location', extraction.location],
+    ['projectScale', extraction.projectScale],
+    ['totalInvestment', extraction.totalInvestment],
+    ['participants', extraction.participants],
+    ['startDate', extraction.startDate],
+    ['caseType', extraction.caseType],
+    ['demonstrationValue', extraction.demonstrationValue],
+    ['projectIntroduction', extraction.projectIntroduction],
+    ['awardStatus', extraction.awardStatus],
+    ['awardEvaluation', extraction.awardEvaluation],
+  ];
+  const emptyFields: string[] = fieldChecks.filter(([_, v]) => !v || v.trim().length < 5).map(([f]) => f);
+  if (extraction.constructionPhase.length === 0) emptyFields.push('constructionPhase');
+  if (extraction.projectInitiatives.length === 0) emptyFields.push('projectInitiatives');
+  if (extraction.sustainabilityTargets.length === 0) emptyFields.push('sustainabilityTargets');
 
-      if (failedFields.length === 0) {
-        console.log('[Extract All Fields] All quality checks passed!');
-        // 评估数据质量
-        extraction.dataQuality = assessDataQuality(extraction);
-        return extraction;
-      }
+  if (emptyFields.length > 0) {
+    console.log(`[Extract All Fields] Phase 2: AI knowledge fill for ${emptyFields.length} empty fields:`, emptyFields);
 
-      console.log(`[Extract All Fields] ${failedFields.length} fields need improvement:`, failedFields.map(f => f.field));
+    const knowledgePrompt = `你是一名建筑/城市规划领域的专家。以下是项目名称，请用你的专业知识补充信息。
 
-      // 补充搜索失败字段的内容
-      const supplementaryParts: string[] = [];
-      const baseQuery = title.replace(/\[PDF\]|\[DOC\]/g, '').trim();
+项目名称：${extraction.caseName || cleanTitle}
 
-      for (const failed of failedFields) {
-        const extra = await supplementarySearch(baseQuery, failed.field, searchFn);
-        if (extra) {
-          supplementaryParts.push(extra);
+需要补充的字段：${emptyFields.join('、')}
+
+## 字段说明
+- location："XX省-XX市-XX区县"格式
+- projectScale：用地面积+规划等级
+- totalInvestment：投资金额
+- participants：委托方、建设方、规划设计方
+- startDate：起止时间
+- caseType：规划类型+建设状态
+- demonstrationValue：关键词+创新点（≥150字）
+- projectIntroduction：项目背景（≥200字）
+- awardStatus：获奖情况
+- awardEvaluation：评价
+- constructionPhase：建设阶段（纯字符串数组）
+- projectInitiatives：项目举措（纯字符串数组）
+- sustainabilityTargets：从[宜居、智慧、人文、创新、绿色、韧性]中选
+
+## 规则
+- 基于专业知识填写，不确定的留空
+- 数组字段每条必须是纯字符串
+- 返回合法JSON，只包含你能补充的字段`;
+
+    try {
+      const knowledgeResult = await callQwenModel(knowledgePrompt, 3000);
+      console.log('[Extract All Fields] Phase 2: Knowledge fill received');
+
+      for (const field of emptyFields) {
+        const val = knowledgeResult[field];
+        if (!val) continue;
+        if (Array.isArray(val) && val.length > 0) {
+          const safeArr = safeStringArray(val);
+          if (safeArr.length > 0) (extraction as any)[field] = safeArr;
+        } else if (typeof val === 'string' && val.trim().length >= 5) {
+          (extraction as any)[field] = val;
         }
       }
-
-      supplementaryContent = supplementaryParts.join('\n\n');
-
-      if (supplementaryContent.length < 200) {
-        console.log('[Extract All Fields] Supplementary content too short, stopping');
-        extraction.dataQuality = assessDataQuality(extraction);
-        return extraction;
-      }
-    } else {
-      // 最后一轮，直接返回
-      extraction.dataQuality = assessDataQuality(extraction);
-      return extraction;
+      extraction.extractionSource = '批量AI提取+知识补充';
+    } catch (error: any) {
+      console.error('[Extract All Fields] Phase 2 failed:', error.message);
     }
   }
 
-  // 不应到达这里，但安全起见
-  return {
-    caseName: title,
-    location: '无',
-    projectScale: '无',
-    totalInvestment: '无',
-    participants: '无',
-    startDate: '无',
-    endDate: '',
-    awardStatus: '未检索到获奖信息',
-    caseType: '无',
-    sustainabilityTargets: [],
-    demonstrationValue: '无',
-    projectIntroduction: '无',
-    constructionPhase: [],
-    awardEvaluation: '无',
-    projectInitiatives: [],
-    infoSource: urls.slice(0, 5).join('\n'),
-    caseImages: [],
-    extractionSource: '全字段 AI 提取版（失败）',
-    dataQuality: '低（提取失败）',
+  // ====== Phase 3：补充搜索（仅对仍为空的关键字段） ======
+  const stillEmpty = fieldChecks.filter(([_, v]) => !v || v.trim().length < 5).map(([f]) => f);
+  if (stillEmpty.length > 0 && stillEmpty.length <= 5) {
+    console.log(`[Extract All Fields] Phase 3: Supplementary search for ${stillEmpty.length} fields:`, stillEmpty);
+
+    try {
+      const suppParts: string[] = [];
+      for (const field of stillEmpty) {
+        const extra = await supplementarySearch(cleanTitle, field, searchFn);
+        if (extra) suppParts.push(extra);
+      }
+      const suppContent = suppParts.join('\n\n');
+
+      if (suppContent.length > 200) {
+        const suppPrompt = `你是一名建筑案例信息提取专家。从以下补充搜索内容中提取指定字段。
+
+需要提取的字段：${stillEmpty.join('、')}
+
+## 规则
+- 只提取原文真实信息
+- 找不到的留空
+- 返回合法JSON
+
+## 补充内容
+${suppContent.substring(0, 8000)}`;
+
+        const suppResult = await callQwenModel(suppPrompt, 2000);
+        for (const field of stillEmpty) {
+          const val = suppResult[field];
+          if (val && typeof val === 'string' && val.trim().length >= 5) {
+            (extraction as any)[field] = val;
+          }
+        }
+        extraction.extractionSource = '批量AI提取+知识补充+补充搜索';
+      }
+    } catch (error: any) {
+      console.error('[Extract All Fields] Phase 3 failed:', error.message);
+    }
+  }
+
+  // ====== 最终填充：确保无空白字段 ======
+  const defaults: Record<string, string> = {
+    location: '无', projectScale: '无', totalInvestment: '无', participants: '无',
+    startDate: '无', awardStatus: '未检索到获奖信息', caseType: '无',
+    demonstrationValue: '无', projectIntroduction: '无', awardEvaluation: '无',
   };
+  for (const [field, defaultVal] of Object.entries(defaults)) {
+    if (!(extraction as any)[field] || (extraction as any)[field].trim().length < 2) {
+      (extraction as any)[field] = defaultVal;
+    }
+  }
+
+  // 提取图片
+  const imagePatterns = [
+    /https?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
+  ];
+  for (const pattern of imagePatterns) {
+    const matches = content.match(pattern);
+    if (matches) {
+      extraction.caseImages.push(...matches.slice(0, 10));
+    }
+  }
+
+  // 评估质量
+  extraction.dataQuality = assessDataQuality(extraction);
+  console.log('[Extract All Fields] Final extraction complete, quality:', extraction.dataQuality);
+
+  return extraction;
 }
 
 function assessDataQuality(extraction: CaseExtraction): string {
