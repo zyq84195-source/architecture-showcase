@@ -435,7 +435,7 @@ export default function SmartSearchPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-4xl font-bold text-purple-600 mb-2">
-                    {caseExtraction.dataQuality === '高' ? '高' : caseExtraction.dataQuality === '中' ? '中' : '低'}
+                    {caseExtraction.dataQuality?.includes('高') ? '高' : caseExtraction.dataQuality?.includes('中') ? '中' : '低'}
                   </div>
                   <div className="text-sm text-gray-600">数据质量</div>
                   <div className="text-xs text-gray-500 mt-1">AI 评估</div>
@@ -452,120 +452,179 @@ export default function SmartSearchPage() {
               </div>
             </div>
 
-            {/* 搜索到的案例信息 */}
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6 mb-6">
-              <h3 className="font-bold text-blue-900 mb-4 text-xl">📋 搜索到的案例信息（完整版：15 个字段）</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-sm text-gray-600">案例名称</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.caseName}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-600">所在区位</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.location}</p>
-                </div>
+            {/* ========== 案例详情（对齐网站 16 字段 + 示意图片） ========== */}
+            <div className="space-y-8 mb-8">
+              {/* 案例标题 */}
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">{caseExtraction.caseName}</h1>
+                {caseExtraction.caseType && (
+                  <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">{caseExtraction.caseType}</span>
+                )}
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-sm text-gray-600">项目规模</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.projectScale}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-600">总投资额</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.totalInvestment}</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-sm text-gray-600">参与主体</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.participants}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-600">起止时间</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.startDate} - {caseExtraction.endDate}</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-sm text-gray-600">获奖情况</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.awardStatus}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-600">案例类型</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.caseType}</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-sm text-gray-600">可持续目标</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(caseExtraction.sustainabilityTargets || []).length > 0 ? (caseExtraction.sustainabilityTargets || []).map((target, index) => (
-                      <span key={index} className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                        {target}
-                      </span>
-                    )) : <span className="text-gray-400 text-sm">未检索到</span>}
+
+              {/* 示意图片 */}
+              {caseExtraction.caseImages && caseExtraction.caseImages.length > 0 && (
+                <div className="elegant-card p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {caseExtraction.caseImages.slice(0, 6).map((img: string, index: number) => (
+                      <div key={index} className="rounded-lg overflow-hidden bg-gray-100">
+                        <img src={img} alt={`示意图片 ${index + 1}`} className="w-full h-48 object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div>
-                  <span className="text-sm text-gray-600">示范意义</span>
-                  <p className="text-gray-900 font-medium">{caseExtraction.demonstrationValue}</p>
+              )}
+
+              {/* 1. 所在区位 */}
+              {caseExtraction.location && caseExtraction.location !== '生态城市' && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">📍 所在区位</h2>
+                  <p className="text-gray-700 leading-relaxed">{caseExtraction.location}</p>
                 </div>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-blue-700 mb-3">📝 项目介绍</h4>
-                <p className="text-gray-700 leading-relaxed">{caseExtraction.projectIntroduction}</p>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-blue-700 mb-3">💡 示范意义</h4>
-                <p className="text-gray-700 leading-relaxed">{caseExtraction.demonstrationValue}</p>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-blue-700 mb-3">🏗 建设阶段</h4>
-                <ul className="space-y-2">
-                  {(caseExtraction.constructionPhase || []).length > 0 ? (caseExtraction.constructionPhase || []).map((phase, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <span className="text-purple-600 mt-1">•</span>
-                      <span className="text-gray-700">{phase}</span>
-                    </li>
-                  )) : <li className="text-gray-400 text-sm">未检索到建设阶段信息</li>}
-                </ul>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-blue-700 mb-3">🚀 项目举措</h4>
-                <ul className="space-y-2">
-                  {(caseExtraction.projectInitiatives || []).length > 0 ? (caseExtraction.projectInitiatives || []).map((initiative, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <span className="text-purple-600 mt-1">•</span>
-                      <span className="text-gray-700">{initiative}</span>
-                    </li>
-                  )) : <li className="text-gray-400 text-sm">未检索到项目举措信息</li>}
-                </ul>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-blue-700 mb-3">🏆 项目获奖评价</h4>
-                <p className="text-gray-700 leading-relaxed">{caseExtraction.awardEvaluation}</p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-700 mb-3">📊 数据质量</h4>
-                  <p className="text-gray-700">{caseExtraction.dataQuality}</p>
+              )}
+
+              {/* 2. 参与主体 */}
+              {caseExtraction.participants && caseExtraction.participants.length > 5 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">👥 参与主体</h2>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.participants}</p>
                 </div>
-                <div className="bg-white rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-700 mb-3">📍 信息来源</h4>
-                  <a href={caseExtraction.infoSource} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">
-                    {caseExtraction.infoSource}
-                  </a>
+              )}
+
+              {/* 3. 项目介绍 */}
+              {caseExtraction.projectIntroduction && caseExtraction.projectIntroduction.length > 10 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">📝 项目介绍</h2>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.projectIntroduction}</p>
+                </div>
+              )}
+
+              {/* 4. 项目规模 */}
+              {caseExtraction.projectScale && caseExtraction.projectScale.length > 3 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">📐 项目规模</h2>
+                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.projectScale}</p>
+                </div>
+              )}
+
+              {/* 5. 总投资额 */}
+              {caseExtraction.totalInvestment && caseExtraction.totalInvestment.length > 5 && !caseExtraction.totalInvestment.includes('未检索') && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">💰 总投资额</h2>
+                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.totalInvestment}</p>
+                </div>
+              )}
+
+              {/* 6. 起止时间 */}
+              {caseExtraction.startDate && caseExtraction.startDate.length > 3 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">📅 起止时间</h2>
+                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.startDate}{caseExtraction.endDate ? ` - ${caseExtraction.endDate}` : ''}</p>
+                </div>
+              )}
+
+              {/* 7. 获奖情况 */}
+              {caseExtraction.awardStatus && caseExtraction.awardStatus.length > 5 && !caseExtraction.awardStatus.includes('未检索') && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏆 获奖情况</h2>
+                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.awardStatus}</p>
+                </div>
+              )}
+
+              {/* 8. 案例类型 */}
+              {caseExtraction.caseType && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏗 案例类型</h2>
+                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.caseType}</p>
+                </div>
+              )}
+
+              {/* 9. 可持续目标 */}
+              {(caseExtraction.sustainabilityTargets || []).length > 0 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🌱 可持续目标</h2>
+                  <div className="flex flex-wrap gap-3">
+                    {(caseExtraction.sustainabilityTargets || []).map((target, index) => (
+                      <span key={index} className="inline-flex items-center gap-1 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium">
+                        {target}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 10. 示范意义 */}
+              {caseExtraction.demonstrationValue && caseExtraction.demonstrationValue.length > 10 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">💡 示范意义</h2>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.demonstrationValue}</p>
+                </div>
+              )}
+
+              {/* 11. 建设阶段 */}
+              {(caseExtraction.constructionPhase || []).length > 0 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🔧 建设阶段</h2>
+                  <div className="space-y-3">
+                    {(caseExtraction.constructionPhase || []).map((phase, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                        <span className="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-bold">{index + 1}</span>
+                        <p className="text-gray-700 pt-1">{phase}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 12. 项目获奖评价 */}
+              {caseExtraction.awardEvaluation && caseExtraction.awardEvaluation.length > 5 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏅 项目获奖评价</h2>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.awardEvaluation}</p>
+                </div>
+              )}
+
+              {/* 13. 项目举措 */}
+              {(caseExtraction.projectInitiatives || []).length > 0 && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🚀 项目举措</h2>
+                  <div className="space-y-3">
+                    {(caseExtraction.projectInitiatives || []).map((initiative, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg">
+                        <span className="text-purple-600 mt-0.5">▸</span>
+                        <p className="text-gray-700">{initiative}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 14. 信息来源 */}
+              {caseExtraction.infoSource && (
+                <div className="elegant-card p-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">🔗 信息来源</h2>
+                  <div className="space-y-1">
+                    {caseExtraction.infoSource.split('\n').filter((url: string) => url.trim()).map((url: string, index: number) => (
+                      <a key={index} href={url.trim()} target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:text-blue-700 hover:underline text-sm truncate">
+                        {url.trim()}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 15. 数据质量 */}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">📊 数据质量</h2>
+                <div className="flex items-center gap-3">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    caseExtraction.dataQuality?.includes('高') ? 'bg-green-100 text-green-800' :
+                    caseExtraction.dataQuality?.includes('中') ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {caseExtraction.dataQuality?.includes('高') ? '高' : caseExtraction.dataQuality?.includes('中') ? '中' : '低'}
+                  </span>
+                  <span className="text-gray-500 text-sm">{caseExtraction.dataQuality}</span>
                 </div>
               </div>
             </div>
