@@ -186,18 +186,29 @@ async function fetchPageContent(url: string): Promise<string> {
         .replace(/\s+/g, ' ')
         .trim();
 
-      const lines = bodyText.split(/[.。!?！？\n]/);
-      const meaningfulLines: string[] = [];
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.length < 10) continue;
-        if (/^(首页|登录|注册|注销|导航|搜索|下载|上传|版权|ICP|备案)/.test(trimmed)) continue;
-        if (/^(您\s*的\s*位\s*置|当前位置|面包屑)/.test(trimmed)) continue;
-        meaningfulLines.push(trimmed);
+      // 过滤导航文本：按短句分割，跳过无意义的片段
+      // 先按空格拆成长词组
+      const words = bodyText.split(/\s+/);
+      const meaningfulWords: string[] = [];
+      let skipCount = 0;
+      for (const word of words) {
+        if (word.length < 2) continue;
+        // 导航关键词
+        if (/^(首页|登录|注册|注销|导航|搜索|下载|上传|版权|ICP|备案|关于|联系|电话|热线|会员|中心|简介|介绍)$/.test(word)) {
+          skipCount++;
+          continue;
+        }
+        // 如果连续跳过太多短词，说明还在导航区域
+        if (skipCount > 20 && word.length < 10) {
+          skipCount++;
+          continue;
+        }
+        skipCount = 0;
+        meaningfulWords.push(word);
       }
-      const cleanText = meaningfulLines.join(' ');
+      const cleanText = meaningfulWords.join(' ');
 
-      return cleanText.substring(0, 10000);
+      return cleanText.substring(0, 15000);
     }
 
     return '';
@@ -335,6 +346,7 @@ const FIELD_NAMES: Record<string, string> = {
 
 async function extractField(field: string, content: string, requirements: string, maxTokens: number = 1000): Promise<any> {
   const fieldName = FIELD_NAMES[field] || field;
+  console.log(`[Extract Field] ${fieldName}: content length = ${content.length}, using first 8000 chars`);
   const prompt = `你是一名建筑案例信息提取专家。从以下网页内容中提取"${fieldName}"的信息。
 
 ## 字段要求
@@ -345,20 +357,24 @@ ${requirements}
 - 用中文回答
 - 不编造任何事实、数据或人名
 - 如果原文中没有相关信息，JSON值设为空字符串""
+- 忽略网站导航、菜单、登录注册等非正文内容
 - 返回合法JSON
 
 ## 网页内容
-${content.substring(0, 4000)}
+${content.substring(0, 8000)}
 
 返回合法JSON：{"result": "提取的结果"}`;
 
   try {
     const result = await callQwenModel(prompt, maxTokens);
-    const value = result.result !== undefined ? result.result : (result[field] || '');
-    if (!value || (typeof value === 'string' && value.length < 2)) {
-      return '';
-    }
-    return value;
+    const raw = result.result !== undefined ? result.result : (result[field] || '');
+    if (!raw || typeof raw !== 'string') return '';
+    // 过滤 AI 返回的“无意义”值
+    const cleaned = raw.trim();
+    const meaningless = ['无', '未找到', '未检索到', 'None', 'N/A', 'null', '暂无', '不确定', '无法确定'];
+    if (meaningless.includes(cleaned) || cleaned.length < 2) return '';
+    console.log(`[Extract Field] ${fieldName}: result = '${cleaned.substring(0, 50)}' (${cleaned.length} chars)`);
+    return cleaned;
   } catch (error: any) {
     console.error(`[Extract Field] Error for ${fieldName}:`, error.message);
     return '';
