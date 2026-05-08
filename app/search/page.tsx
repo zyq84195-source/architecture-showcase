@@ -105,7 +105,7 @@ export default function SearchPage() {
     try {
       // 使用新的搜索服务 API
       const response = await fetch(
-        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=baidu`
+        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=tavily`
       )
       const data = await response.json()
 

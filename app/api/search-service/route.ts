@@ -1,30 +1,23 @@
 /**
- * 搜索服务 API - 支持多搜索引擎
+ * 搜索服务 API - 优化版
  *
- * 功能：
- * 1. 支持 DuckDuckGo、Tavily、Bing、百度搜索
- * 2. 统一的搜索接口
- * 3. 搜索引擎选择
+ * 改进点：
+ * 1. 默认引擎改为 Tavily（质量最高，已配置 API Key）
+ * 2. 查询增强：根据用户输入自动补充建筑领域关键词
+ * 3. 结果过滤：去重 + 过滤低质量域名 + 评分排序
+ * 4. 保留原有搜索引擎作为 fallback
  *
  * 查询参数：
  * - q: 搜索关键词（必填）
- * - engine: 搜索引擎（可选，默认：duckduckgo）
+ * - engine: 搜索引擎（可选，默认：tavily）
  * - max_results: 最大结果数（可选，默认：10）
- *
- * 环境变量：
- * - TAVILY_API_KEY: Tavily API 密钥（可选）
- *
- * 示例：
- * - GET /api/search-service?q=建筑案例&engine=duckduckgo
- * - GET /api/search-service?q=南京小西湖&engine=baidu
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
-/**
- * 搜索结果接口
- */
+// ─── 类型定义 ───────────────────────────────────────────────
+
 interface SearchResult {
   title: string;
   url: string;
@@ -37,258 +30,191 @@ interface SearchResult {
   relevance_reason?: string;
 }
 
-/**
- * DuckDuckGo 搜索结果接口
- */
-interface DuckDuckGoResult {
-  FirstURL: string;
-  Text: string;
-  Title: string;
-}
+// ─── 查询增强 ───────────────────────────────────────────────
 
 /**
- * Tavily 搜索结果接口
+ * 建筑领域关键词，用于判断搜索意图
  */
-interface TavilyResult {
-  title: string;
-  url: string;
-  content: string;
-  score?: number;
-  published_date?: string;
-}
+const ARCHITECTURE_KEYWORDS = [
+  '建筑', '规划', '城市更新', '街区', '改造', '保护', '再生',
+  '设计', '社区', '文化', '历史', '景观', '生态', '可持续',
+  '旧城', '新村', '更新', '修缮', '遗产', '风貌',
+];
 
 /**
- * Bing 搜索结果接口
+ * 域名质量评分：建筑/规划相关网站分数高，泛内容平台分数低
  */
-interface BingResult {
-  name: string;
-  url: string;
-  snippet: string;
-}
+const DOMAIN_QUALITY: Record<string, number> = {
+  // 高质量建筑/规划类网站
+  'archidogs.com': 90,
+  'archdaily.com': 90,
+  'archdaily.cn': 90,
+  'dezeen.com': 90,
+  'gooood.cn': 90,
+  'archina.com': 85,
+  'cnki.net': 85,
+  'gov.cn': 85,
+  'mohurd.gov.cn': 85,
+  'planning.org.cn': 85,
+  'china-up.com': 85,
+  'architecture.com': 85,
+  'sohu.com': 60,
+  'qq.com': 55,
+  'sina.com.cn': 55,
+  '163.com': 55,
+  'people.com.cn': 60,
+  // 低质量泛内容平台
+  'zhihu.com': 30,
+  'baidu.com': 25,
+  'tieba.baidu.com': 15,
+  'baike.baidu.com': 20,
+  'wenku.baidu.com': 20,
+  'douyin.com': 10,
+  'toutiao.com': 20,
+  'xiaohongshu.com': 20,
+};
 
 /**
- * 百度搜索结果接口
+ * 根据域名获取质量评分
  */
-interface BaiduResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-/**
- * 调用本地 Qwen 模型（用于相关性评估）
- */
-async function callQwenModel(prompt: string, maxTokens: number = 300): Promise<any> {
-  const localApiUrl = process.env.LOCAL_QWEN_API_URL || 'http://localhost:11434/v1';
-
+function getDomainScore(url: string): number {
   try {
-    const response = await fetch(localApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'qwen2.5:7b',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        stream: false,
-        max_tokens: maxTokens,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Qwen API error: ${response.status}`);
+    const hostname = new URL(url).hostname.replace('www.', '');
+    // 精确匹配
+    if (DOMAIN_QUALITY[hostname] !== undefined) {
+      return DOMAIN_QUALITY[hostname];
     }
-
-    const data = await response.json();
-    
-    // 提取内容
-    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    
-    if (!content) {
-      throw new Error('Qwen API returned empty content');
+    // 子域名匹配（如 news.sohu.com）
+    for (const [domain, score] of Object.entries(DOMAIN_QUALITY)) {
+      if (hostname.endsWith('.' + domain)) {
+        return score;
+      }
     }
+    return 50; // 默认中等
+  } catch {
+    return 30;
+  }
+}
 
-    // 尝试解析 JSON
+/**
+ * 查询增强：根据用户输入判断意图，自动补充领域关键词
+ *
+ * 策略：
+ * - 如果查询已包含建筑领域关键词 → 不追加（用户意图明确）
+ * - 如果查询是具体项目/地名 → 追加"建筑案例 城市更新"提高相关性
+ * - 如果查询偏短（<4字）→ 追加更多上下文
+ */
+function enhanceQuery(query: string): string {
+  const hasArchitectureKeyword = ARCHITECTURE_KEYWORDS.some(kw => query.includes(kw));
+
+  if (hasArchitectureKeyword) {
+    return query; // 用户意图已明确，不改
+  }
+
+  if (query.length <= 4) {
+    return `${query} 建筑 城市更新 案例`;
+  }
+
+  return `${query} 建筑案例`;
+}
+
+// ─── 结果过滤与排序 ──────────────────────────────────────────
+
+/**
+ * URL 去重（同一域名下的相似页面只保留一条）
+ */
+function deduplicateResults(results: SearchResult[]): SearchResult[] {
+  const seen = new Set<string>();
+  return results.filter((result) => {
     try {
-      return JSON.parse(content);
-    } catch (e) {
-      // 如果不是 JSON，返回原始文本
-      return {
-        content: content
-      };
+      const url = new URL(result.url);
+      // 以域名+路径前两段作为去重键
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      const dedupKey = `${url.hostname}/${pathParts.slice(0, 2).join('/')}`;
+      if (seen.has(dedupKey)) return false;
+      seen.add(dedupKey);
+      return true;
+    } catch {
+      return true;
     }
-  } catch (error: any) {
-    console.error('[Qwen Model] Error:', error.message);
-    throw error;
-  }
-}
-
-/**
- * 评估搜索结果相关性
- */
-async function evaluateRelevance(query: string, searchResult: SearchResult): Promise<{ relevance_score: number; relevance_reason: string }> {
-  const locationKeywords = query.match(/([^\s]+[市县区省])/g);
-  const locationKeyword = locationKeywords ? locationKeywords[0] : '';
-
-  const prompt = `
-Evaluate relevance of this search result to user's query.
-
-## User Query
-Query: "${query}"
-${locationKeyword ? `Location Keyword: ${locationKeyword} - If search result mentions this location (the city/province in user's query), it is MORE relevant` : '- No specific location keyword in query.'}
-
-## Search Result
-- Title: ${searchResult.title}
-- Snippet: ${searchResult.snippet.substring(0, 300)}
-- URL: ${searchResult.url}
-- Full Content Preview: ${(searchResult.content || '').substring(0, 500)}
-
-## Relevance Criteria
-
-Rate relevance on a scale of 0-100:
-
-### Location Matching (Very Important)
-${locationKeyword ? `- If search result mentions "${locationKeyword}" (the city/province in user's query), score should be at least 80. This is a STRONG relevance signal.` : '- No specific location keyword in query.'}
-
-### Content Relevance (Important)
-- 90-100: Highly relevant - The result directly addresses user's query (same topic, location, and scope)
-- 70-89: Moderately relevant - Related topic but may differ in location, scale, or scope
-- 50-69: Somewhat relevant - Tangentially related architecture projects
-- 0-49: Not relevant - Unrelated topics (e.g., different country, different city, unrelated industry)
-
-## Task
-Provide a brief reason for rating in 1-2 sentences, highlighting:
-1. Location matching (if applicable)
-2. Topic relevance
-3. Content quality
-
-Return ONLY valid JSON:
-{
-  "relevance_score": number (0-100),
-  "relevance_reason": "brief explanation (mention location matching if applicable)"
-}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 300);
-    let relevanceScore = Math.min(100, Math.max(0, result.relevance_score || 50));
-
-    if (locationKeyword) {
-      const combinedContent = (searchResult.title + ' ' + searchResult.snippet + ' ' + (searchResult.content || '')).toLowerCase();
-      if (combinedContent.includes(locationKeyword.toLowerCase())) {
-        relevanceScore = Math.min(100, relevanceScore + 25);
-      }
-    }
-
-    return {
-      relevance_score: relevanceScore,
-      relevance_reason: result.relevance_reason || 'Unable to evaluate'
-    };
-  } catch (error) {
-    console.error('[Relevance Evaluation] Error:', error);
-    return { relevance_score: 50, relevance_reason: 'Unable to evaluate' };
-  }
-}
-
-/**
- * 过滤和排序搜索结果
- */
-async function filterAndRankResults(query: string, searchResults: SearchResult[], max_results: number): Promise<SearchResult[]> {
-  console.log(`[Relevance Filtering] Evaluating ${searchResults.length} results...`);
-
-  const resultsWithRelevance = await Promise.all(
-    searchResults.map(async (result) => {
-      const evaluation = await evaluateRelevance(query, result);
-      return {
-        ...result,
-        relevance_score: evaluation.relevance_score,
-        relevance_reason: evaluation.relevance_reason
-      };
-    })
-  );
-
-  const sortedResults = resultsWithRelevance
-    .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
-
-  const topResults = sortedResults.slice(0, max_results);
-
-  console.log(`[Relevance Filtering] Selected top ${topResults.length} results`);
-  topResults.forEach((result, index) => {
-    console.log(`  ${index + 1}. Score: ${result.relevance_score}, Title: ${result.title.substring(0, 50)}...`);
   });
-
-  return topResults;
 }
 
 /**
- * 使用 DuckDuckGo 进行搜索（免费，无需 API Key）
+ * 计算单条结果的综合评分
+ * - Tavily 自带 score → 直接使用
+ * - 域名质量加成
+ * - 标题/摘要与查询关键词匹配度
  */
-async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
-  const response = await fetch(
-    `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=0`
-  );
+function scoreResult(result: SearchResult, query: string): number {
+  let score = result.score || 50;
 
-  if (!response.ok) {
-    throw new Error(`DuckDuckGo API error: ${response.status}`);
+  // 域名质量加成
+  const domainScore = getDomainScore(result.url);
+  score = score * 0.5 + domainScore * 0.5;
+
+  // 标题关键词匹配加成
+  const queryTerms = query.split(/\s+/).filter(t => t.length > 1);
+  const titleLower = result.title.toLowerCase();
+  const snippetLower = result.snippet.toLowerCase();
+  let matchCount = 0;
+  for (const term of queryTerms) {
+    if (titleLower.includes(term.toLowerCase())) matchCount += 2;
+    if (snippetLower.includes(term.toLowerCase())) matchCount += 1;
   }
+  score += Math.min(matchCount * 5, 30);
 
-  const data = await response.json();
-
-  // DuckDuckGo 返回 RelatedTopics，从中提取结果
-  const results: SearchResult[] = [];
-
-  if (data.RelatedTopics) {
-    for (const topic of data.RelatedTopics) {
-      if (topic.FirstURL && topic.Text && topic.Text !== '') {
-        results.push({
-          title: topic.Text.substring(0, 80),
-          url: topic.FirstURL,
-          snippet: topic.Text.substring(0, 200),
-          source: 'duckduckgo',
-          score: 0,
-        });
-      }
-      if (results.length >= max_results * 2) {
-        break;
-      }
-    }
-  }
-
-  console.log('[DuckDuckGo] Search results count:', results.length);
-  return results;
+  return Math.round(Math.min(100, score));
 }
 
 /**
- * 使用 Tavily API 进行搜索
+ * 过滤 + 排序 + 截断
+ */
+function filterAndRankResults(
+  results: SearchResult[],
+  query: string,
+  maxResults: number
+): SearchResult[] {
+  const deduped = deduplicateResults(results);
+  return deduped
+    // 评分
+    .map(r => ({ ...r, relevance_score: scoreResult(r, query) }))
+    // 过滤掉极低分结果（< 20 分）
+    .filter(r => (r.relevance_score ?? 0) >= 20)
+    // 按分数降序
+    .sort((a, b) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0))
+    // 截断
+    .slice(0, maxResults);
+}
+
+// ─── 搜索引擎实现 ────────────────────────────────────────────
+
+/**
+ * Tavily 搜索（默认引擎，质量最高）
  */
 async function searchWithTavily(query: string, max_results: number): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
-
   if (!apiKey) {
     throw new Error('TAVILY_API_KEY environment variable is not set');
   }
 
+  // 查询增强
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Tavily] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
   const response = await fetch('https://api.tavily.com/search', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       api_key: apiKey,
-      query: query,
-      search_depth: 'basic',
-      max_results: max_results * 2,
-      include_answer: true,
+      query: enhancedQuery,
+      search_depth: 'advanced',
+      max_results: Math.min(max_results * 2, 20), // 多取一些用于过滤
+      include_answer: false,
       include_raw_content: false,
       include_images: false,
       include_domains: [],
-      exclude_domains: [],
+      exclude_domains: ['zhihu.com', 'baike.baidu.com', 'douyin.com'],
     }),
   });
 
@@ -298,105 +224,126 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
   }
 
   const data = await response.json();
-  console.log('[Tavily] Search results count:', data.results.length);
-  console.log('[Tavily] Query:', query);
+  console.log(`[Tavily] Raw results: ${data.results?.length}`);
 
-  return data.results.map((item: any) => ({
+  return (data.results || []).map((item: any) => ({
     title: item.title || '未命名',
     url: item.url,
-    snippet: item.content ? item.content.substring(0, 500) : '',
-    content: item.raw_content || item.content || '',
-    images: item.images || [],
+    snippet: (item.content || '').substring(0, 500),
+    content: item.content || '',
     source: 'tavily',
-    score: item.score || 0,
+    score: item.score || 50,
     published_date: item.published_date || '',
   }));
 }
 
 /**
- * 使用百度搜索（爬取百度搜索页面）
+ * DuckDuckGo 搜索（免费备选）
+ */
+async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
+  const enhancedQuery = enhanceQuery(query);
+  const response = await fetch(
+    `https://api.duckduckgo.com/?q=${encodeURIComponent(enhancedQuery)}&format=json&no_html=1&skip_disambig=0`
+  );
+
+  if (!response.ok) {
+    throw new Error(`DuckDuckGo API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const results: SearchResult[] = [];
+
+  if (data.RelatedTopics) {
+    for (const topic of data.RelatedTopics) {
+      if (topic.FirstURL && topic.Text) {
+        results.push({
+          title: topic.Text.substring(0, 80),
+          url: topic.FirstURL,
+          snippet: topic.Text.substring(0, 200),
+          source: 'duckduckgo',
+          score: 50,
+        });
+      }
+      if (results.length >= max_results * 2) break;
+    }
+  }
+
+  console.log(`[DuckDuckGo] Results: ${results.length}`);
+  return results;
+}
+
+/**
+ * Bing 搜索（HTML 爬取，通过本地 web-search API）
+ */
+async function searchWithLocalService(query: string, engine: string): Promise<SearchResult[]> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  const enhancedQuery = enhanceQuery(query);
+
+  const response = await fetch(
+    `${baseUrl}/api/web-search?q=${encodeURIComponent(enhancedQuery)}&engine=${engine}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Local search service error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (data.data || []).map((item: any) => ({
+    title: item.title || '未命名',
+    url: item.url,
+    snippet: item.snippet || '',
+    source: engine,
+    score: 50,
+  }));
+}
+
+/**
+ * 百度搜索（HTML 爬取）
  */
 async function searchWithBaidu(query: string, max_results: number): Promise<SearchResult[]> {
-  console.log('[Baidu Search] Starting search...');
-  console.log('[Baidu Search] Query:', query);
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Baidu] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
 
-  const response = await fetch('https://www.baidu.com/s', {
+  const response = await fetch(`https://www.baidu.com/s?wd=${encodeURIComponent(enhancedQuery)}&ie=utf-8&oe=utf-8`, {
     method: 'GET',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
   });
 
   if (!response.ok) {
-    throw new Error(`Baidu Search error: ${response.status}`);
+    throw new Error(`Baidu search error: ${response.status}`);
   }
 
   const html = await response.text();
   const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
-  // 提取搜索结果
-  $('.result').each((i: number, el: any) => {
+  $('.result, .c-container').each((i: number, el: any) => {
     if (results.length >= max_results * 2) return false;
 
-    const titleEl = $(el).find('h3 a');
+    const titleEl = $(el).find('h3 a, .t a');
     const title = titleEl.text().trim();
-    let url = titleEl.attr('href');
-
-    const snippetEl = $(el).find('.c-abstract');
+    const url = titleEl.attr('href');
+    const snippetEl = $(el).find('.c-abstract, .c-span-last, .ec_wise_ad_p0');
     const snippet = snippetEl.text().trim();
 
-    // 清理 URL
-    if (url) {
-      if (url.startsWith('http')) {
-        url = url.split('?')[0];
-      }
-    }
-
-    // 只添加有效的结果
-    if (title && url && url.length > 10) {
-      results.push({
-        title,
-        url,
-        snippet: snippet || '',
-        source: 'baidu',
-        score: 0,
-      });
-      console.log(`[Baidu Search] Result ${results.length}: ${title.substring(0, 50)}... (URL: ${url})`);
+    if (title && url && title.length > 2) {
+      results.push({ title, url, snippet: snippet || '', source: 'baidu', score: 50 });
     }
   });
 
-  console.log('[Baidu Search] Total results:', results.length);
+  console.log(`[Baidu] Results: ${results.length}`);
   return results;
 }
 
-/**
- * 使用本地搜索服务（包含百度和 Bing）
- */
-async function searchWithLocalService(query: string, engine: string): Promise<SearchResult[]> {
-  const searchServiceUrl = 'http://localhost:3002';
-  const response = await fetch(`${searchServiceUrl}/api/search?q=${encodeURIComponent(query)}&engine=${engine}`);
-  
-  if (!response.ok) {
-    throw new Error(`Local search service error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  console.log(`[Local Search Service] Engine: ${engine}, Results: ${data.count}`);
-  
-  return data.data.map((item: any) => ({
-    title: item.title || '未命名',
-    url: item.url,
-    snippet: item.snippet || '',
-    source: engine,
-    score: 0,
-  }));
-}
+// ─── 主处理 ──────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'duckduckgo';
+    const engine = request.nextUrl.searchParams.get('engine') || 'tavily'; // 默认改为 tavily
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -406,74 +353,56 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`[Search Service] Query: ${q}, Engine: ${engine}, Max Results: ${max_results}`);
-    console.log(`[Search Service] Using ${engine.toUpperCase()} search engine`);
+    console.log(`[Search Service] Query: "${q}", Engine: ${engine}, Max: ${max_results}`);
 
-    let rawSearchResults: SearchResult[] = [];
+    // ── 第一步：获取原始搜索结果 ──
+    let rawResults: SearchResult[];
 
-    // 根据搜索引擎选择
     switch (engine.toLowerCase()) {
-      case 'duckduckgo':
-        rawSearchResults = await searchWithDuckDuckGo(q, max_results);
-        break;
-      
       case 'tavily':
-        rawSearchResults = await searchWithTavily(q, max_results);
+        rawResults = await searchWithTavily(q, max_results);
         break;
-      
+      case 'duckduckgo':
+        rawResults = await searchWithDuckDuckGo(q, max_results);
+        break;
       case 'bing':
-        rawSearchResults = await searchWithLocalService(q, 'bing');
+        rawResults = await searchWithLocalService(q, 'bing');
         break;
-      
       case 'baidu':
-        rawSearchResults = await searchWithBaidu(q, max_results);
+        rawResults = await searchWithBaidu(q, max_results);
         break;
-      
-      case 'local':
-        // 默认使用百度
-        rawSearchResults = await searchWithBaidu(q, max_results);
-        break;
-      
       default:
-        // 默认使用 DuckDuckGo
-        rawSearchResults = await searchWithDuckDuckGo(q, max_results);
+        // 默认使用 Tavily
+        rawResults = await searchWithTavily(q, max_results);
     }
 
-    console.log(`[Search Service] Found ${rawSearchResults.length} raw search results`);
-
-    if (rawSearchResults.length === 0) {
+    if (rawResults.length === 0) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: '没有找到相关的搜索结果。请尝试：1) 使用其他搜索词；2) 使用 URL 输入模式直接提供网页链接' 
-        },
+        { success: false, error: '没有找到相关的搜索结果，请尝试其他搜索词' },
         { status: 404 }
       );
     }
 
-    console.log('[Search Service] Step 2: Evaluating relevance...');
-    const searchResults = await filterAndRankResults(q, rawSearchResults, max_results);
-    console.log(`[Search Service] Selected ${searchResults.length} results`);
+    // ── 第二步：过滤 + 排序 + 截断 ──
+    const rankedResults = filterAndRankResults(rawResults, q, max_results);
+    console.log(`[Search Service] Final: ${rankedResults.length} results`);
 
     return NextResponse.json({
       success: true,
       query: q,
-      engine: engine,
-      count: searchResults.length,
-      data: searchResults,
+      engine,
+      count: rankedResults.length,
+      data: rankedResults,
       metadata: {
         timestamp: new Date().toISOString(),
         searchEngine: engine,
-        maxResults: max_results
+        maxResults: max_results,
       },
     });
   } catch (error: any) {
     console.error('[Search Service Error]', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message,
-      },
+      { success: false, error: error.message || '搜索失败' },
       { status: 500 }
     );
   }
