@@ -119,7 +119,7 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
       search_depth: 'advanced',
       max_results: max_results * 2,
       include_answer: true,
-      include_raw_content: true,
+      include_raw_content: false,
       include_images: true,
       include_domains: [],
       exclude_domains: ['zhihu.com', 'baike.baidu.com', 'douyin.com', 'scribd.com', 'tieba.baidu.com', 'wenku.baidu.com', 'toutiao.com'],
