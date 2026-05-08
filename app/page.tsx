@@ -36,6 +36,11 @@ export default function HomePage() {
                   🤖 智能搜索
                 </Button>
               </Link>
+              <Link href="/admin/cases">
+                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                  管理
+                </Button>
+              </Link>
               <div className="w-px h-6 bg-gray-200 mx-2"></div>
               <Link href="/auth/register">
                 <Button className="btn-primary-elegant">
