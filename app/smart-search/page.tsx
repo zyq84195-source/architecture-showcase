@@ -504,11 +504,11 @@ export default function SmartSearchPage() {
                 <div>
                   <span className="text-sm text-gray-600">可持续目标</span>
                   <div className="flex flex-wrap gap-2">
-                    {caseExtraction.sustainabilityTargets.map((target, index) => (
+                    {(caseExtraction.sustainabilityTargets || []).length > 0 ? (caseExtraction.sustainabilityTargets || []).map((target, index) => (
                       <span key={index} className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                         {target}
                       </span>
-                    ))}
+                    )) : <span className="text-gray-400 text-sm">未检索到</span>}
                   </div>
                 </div>
                 <div>
@@ -530,24 +530,24 @@ export default function SmartSearchPage() {
               <div className="bg-white rounded-lg p-4 mb-4">
                 <h4 className="font-semibold text-blue-700 mb-3">🏗 建设阶段</h4>
                 <ul className="space-y-2">
-                  {caseExtraction.constructionPhase.map((phase, index) => (
+                  {(caseExtraction.constructionPhase || []).length > 0 ? (caseExtraction.constructionPhase || []).map((phase, index) => (
                     <li key={index} className="flex items-start gap-3">
                       <span className="text-purple-600 mt-1">•</span>
                       <span className="text-gray-700">{phase}</span>
                     </li>
-                  ))}
+                  )) : <li className="text-gray-400 text-sm">未检索到建设阶段信息</li>}
                 </ul>
               </div>
               
               <div className="bg-white rounded-lg p-4 mb-4">
                 <h4 className="font-semibold text-blue-700 mb-3">🚀 项目举措</h4>
                 <ul className="space-y-2">
-                  {caseExtraction.projectInitiatives.map((initiative, index) => (
+                  {(caseExtraction.projectInitiatives || []).length > 0 ? (caseExtraction.projectInitiatives || []).map((initiative, index) => (
                     <li key={index} className="flex items-start gap-3">
                       <span className="text-purple-600 mt-1">•</span>
                       <span className="text-gray-700">{initiative}</span>
                     </li>
-                  ))}
+                  )) : <li className="text-gray-400 text-sm">未检索到项目举措信息</li>}
                 </ul>
               </div>
               
