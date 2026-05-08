@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  port: 3003,
+  // 允许跨域访问（开发环境）
+  allowedDevOrigins: [
+    'http://localhost:3000',
+    'http://192.168.43.137:3000',
+    'http://localhost',
+    'http://192.168.43.137',
+  ],
   images: {
     remotePatterns: [
       {

@@ -1,0 +1,111 @@
+﻿async function evaluateRelevanceRuleBased(query: string, searchResult: SearchResult): Promise<{ relevance_score: number; relevance_reason: string }> {
+  let score = 40; // 初始分数（40 分），避免 0 分
+  const reasons = [];
+  const combinedContent = (searchResult.title + " " + searchResult.snippet + " " + (searchResult.content || "")).toLowerCase();
+
+  // 提取地理位置关键词
+  const locationKeywords = query.match(/([^\s]+[市县区省])/g);
+  const locationKeyword = locationKeywords ? locationKeywords[0] : "";
+
+  // ===== 加分项 =====
+
+  // 加分 1：地理位置匹配（+20 分，CRITICAL）
+  if (locationKeyword && combinedContent.includes(locationKeyword.toLowerCase())) {
+    score += 20;
+    reasons.push(`包含位置关键词"${locationKeyword}"`);
+    console.log(`[Rule-based Scoring] Location match (+20): ${locationKeyword}`);
+  } else if (locationKeyword) {
+    score = Math.max(0, score - 20); // 如果应该有位置但没有匹配，大幅扣分
+    reasons.push(`缺少位置关键词"${locationKeyword}"`);
+    console.log(`[Rule-based Scoring] No location match (-20): ${locationKeyword}`);
+  }
+
+  // 加分 2：高质量域名（+25 分）
+  const highQualityDomains = [
+    "gov.cn", "mohurd.gov.cn", "people.com.cn", "xinhuanet.com",
+    "baike.baidu.com", "zh.wikipedia.org", "archdaily.com", "gooood.cn",
+    "cn.archdaily.com", "sina.com.cn", "sohu.com", "163.com", "qq.com"
+  ];
+  const isHighQualityDomain = highQualityDomains.some(domain =>
+    searchResult.url.includes(domain)
+  );
+  if (isHighQualityDomain) {
+    score += 25;
+    reasons.push("来自高质量域名");
+    console.log(`[Rule-based Scoring] High quality domain (+25): ${searchResult.url}`);
+  }
+
+  // 加分 3：案例关键词（+15 分）
+  const caseKeywords = ["案例", "项目", "规划", "生态", "建筑"];
+  const hasCaseKeyword = caseKeywords.some(keyword => combinedContent.includes(keyword));
+  if (hasCaseKeyword) {
+    score += 15;
+    reasons.push("包含案例相关关键词");
+    console.log(`[Rule-based Scoring] Case keyword match (+15)`);
+  }
+
+  // 加分 4：项目规模/投资关键词（+10 分）
+  const scaleKeywords = ["投资", "规模", "亿", "万", "建筑面积", "占地面积", "总投资"];
+  const hasScaleKeyword = scaleKeywords.some(keyword => combinedContent.includes(keyword));
+  if (hasScaleKeyword) {
+    score += 10;
+    reasons.push("包含项目规模/投资信息");
+    console.log(`[Rule-based Scoring] Scale keyword match (+10)`);
+  }
+
+  // 加分 5：时间信息（+5 分）
+  const timeKeywords = ["年", "月", "日", "工期", "周期", "年份", "季度"];
+  const hasTimeKeyword = timeKeywords.some(keyword => combinedContent.includes(keyword));
+  if (hasTimeKeyword) {
+    score += 5;
+    reasons.push("包含时间信息");
+    console.log(`[Rule-based Scoring] Time keyword match (+5)`);
+  }
+
+  // 加分 6：详细描述（+10 分，基于内容长度）
+  const contentLength = searchResult.content ? searchResult.content.length : 0;
+  if (contentLength > 500) {
+    score += 10;
+    reasons.push("内容详细（>500 字符）");
+    console.log(`[Rule-based Scoring] Detailed content (+10): ${contentLength} chars`);
+  } else if (contentLength > 200) {
+    score += 5;
+    reasons.push("内容适中（>200 字符）");
+    console.log(`[Rule-based Scoring] Medium content (+5): ${contentLength} chars`);
+  }
+
+  // ===== 扣分项 =====
+
+  // 扣分 1：通用链接页（-30 分）
+  if (searchResult.url.includes("baidu.com/link")) {
+    score -= 30;
+    reasons.push("百度重定向链接（扣分）");
+    console.log(`[Rule-based Scoring] Baidu redirect link (-30): ${searchResult.url}`);
+  }
+
+  // 扣分 2：内容太短（-20 分）
+  if (contentLength < 100) {
+    score -= 20;
+    reasons.push("内容太短（<100 字符，扣分）");
+    console.log(`[Rule-based Scoring] Short content (-20): ${contentLength} chars`);
+  }
+
+  // 扣分 3：标题太短（-10 分）
+  if (searchResult.title && searchResult.title.length < 3) {
+    score -= 10;
+    reasons.push("标题太短（<3 字符，扣分）");
+    console.log(`[Rule-based Scoring] Short title (-10): ${searchResult.title.length} chars`);
+  }
+
+  // 限制分数范围 0-100
+  score = Math.max(0, Math.min(100, score));
+
+  const relevanceReason = reasons.length > 0 ? reasons.join("；") : "基本信息";
+
+  console.log(`[Rule-based Scoring] Final score: ${score}, Reasons: ${relevanceReason}`);
+
+  return {
+    relevance_score: score,
+    relevance_reason: relevanceReason
+  };
+}

@@ -463,35 +463,6 @@ Return ONLY valid JSON:
     const result = await callQwenModel(prompt, 2000);
     let initiatives = result.projectInitiatives || [];
     
-    // 确保返回的是字符串数组
-    if (Array.isArray(initiatives) && initiatives.length > 0) {
-      // 如果是对象数组，提取为字符串数组
-      if (typeof initiatives[0] === 'object' && initiatives[0] !== null) {
-        console.log('[Extract Project Initiatives] Converting object array to string array');
-        initiatives = initiatives.map((item: any) => {
-          // 尝试提取各种可能的字段
-          if (typeof item === 'string') {
-            return item;
-          }
-          if (typeof item.initiative === 'string') {
-            return item.initiative;
-          }
-          if (typeof item.measuresTaken === 'string') {
-            return item.measuresTaken;
-          }
-          // 如果都不是，将对象转换为字符串
-          return JSON.stringify(item);
-        });
-      }
-      // 确保所有元素都是字符串
-      initiatives = initiatives.map(item => {
-        if (typeof item === 'string') {
-          return item;
-        }
-        return String(item);
-      });
-    }
-    
     if (initiatives.length < 3) {
       initiatives = [
         `技术创新：项目采用了先进的绿色建筑技术和可持续设计方案，集成生态环保理念，实现资源节约和环境友好，突破传统建筑技术和标准。`,
@@ -662,153 +633,7 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
   }));
 }
 
-/**
- * 使用 DuckDuckGo 进行搜索（免费，无需 API Key）
- */
-async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
-  try {
-    console.log('[DuckDuckGo] Starting search...');
-
-    // 使用 DuckDuckGo Instant Answer API
-    const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=0`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`DuckDuckGo API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('[DuckDuckGo] Search results count:', data.RelatedTopics?.length || 0);
-
-    const results: SearchResult[] = [];
-
-    // 提取搜索结果
-    if (data.RelatedTopics) {
-      for (const topic of data.RelatedTopics) {
-        if (topic.FirstURL && topic.Text && topic.Text !== '' && results.length < max_results * 2) {
-          results.push({
-            title: topic.Text.substring(0, 80),
-            url: topic.FirstURL,
-            snippet: topic.Text.substring(0, 200),
-            content: topic.Text,
-            source: 'duckduckgo',
-            score: 0,
-          });
-        }
-      }
-    }
-
-    // 如果 RelatedTopics 为空，尝试使用 AbstractText
-    if (results.length === 0 && data.AbstractURL && data.AbstractText) {
-      results.push({
-        title: data.Heading || 'Abstract',
-        url: data.AbstractURL,
-        snippet: data.AbstractText.substring(0, 200),
-        content: data.AbstractText,
-        source: 'duckduckgo',
-        score: 0,
-      });
-    }
-
-    return results;
-  } catch (error: any) {
-    console.error('[DuckDuckGo Search Error]', error.message);
-    throw new Error(`DuckDuckGo 搜索失败: ${error.message}`);
-  }
-}
-
-/**
- * 爬取网页内容
- */
-async function fetchPageContent(url: string): Promise<string> {
-  try {
-    console.log(`[Fetch Page Content] Fetching: ${url}`);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      },
-      signal: AbortSignal.timeout(10000), // 10 秒超时
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const html = await response.text();
-    console.log(`[Fetch Page Content] Fetched ${html.length} characters`);
-
-    // 简单的文本提取（提取 <body> 中的文本）
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    if (bodyMatch) {
-      const bodyText = bodyMatch[1]
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      return bodyText.substring(0, 10000); // 限制为 10000 字符
-    }
-
-    return '';
-  } catch (error: any) {
-    console.error(`[Fetch Page Content] Error for ${url}:`, error.message);
-    return '';
-  }
-}
-
-/**
- * 批量爬取多个网页的内容
- */
-async function fetchMultiplePages(urls: string[]): Promise<Map<string, string>> {
-  const contentMap = new Map<string, string>();
-
-  // 并发爬取（最多 5 个并发）
-  const batchSize = 5;
-  for (let i = 0; i < urls.length; i += batchSize) {
-    const batch = urls.slice(i, i + batchSize);
-    const results = await Promise.all(
-      batch.map(async (url) => {
-        const content = await fetchPageContent(url);
-        return { url, content };
-      })
-    );
-
-    results.forEach(({ url, content }) => {
-      contentMap.set(url, content);
-    });
-  }
-
-  return contentMap;
-}
-
 async function evaluateRelevance(query: string, searchResult: SearchResult): Promise<{ relevance_score: number; relevance_reason: string }> {
-  // 检查是否是低质量结果（通用链接页）
-  if (searchResult.url.includes('baidu.com/link') || 
-      searchResult.url.includes('bing.com/search') ||
-      searchResult.url.includes('sogou.com/link')) {
-    console.warn('[Relevance Evaluation] Filtered out generic link page:', searchResult.url);
-    return { relevance_score: 0, relevance_reason: '通用链接页，已过滤' };
-  }
-
-  // 检查是否是新闻页面
-  if (searchResult.title.includes('新闻') || 
-      searchResult.title.includes('2017') ||
-      searchResult.title.includes('2018') ||
-      searchResult.title.includes('2019') ||
-      searchResult.title.includes('2020') ||
-      searchResult.title.includes('2021')) {
-    console.warn('[Relevance Evaluation] Filtered out news article:', searchResult.title);
-    return { relevance_score: 10, relevance_reason: '新闻文章，不是具体案例' };
-  }
-
   const locationKeywords = query.match(/([^\s]+[市县区省])/g);
   const locationKeyword = locationKeywords ? locationKeywords[0] : '';
 
@@ -825,50 +650,40 @@ ${locationKeyword ? `Location Keyword: ${locationKeyword} - If search result men
 - URL: ${searchResult.url}
 - Full Content Preview: ${(searchResult.content || '').substring(0, 500)}
 
-## Relevance Criteria (STRICT)
+## Relevance Criteria
 
 Rate relevance on a scale of 0-100:
 
-### Location Matching (CRITICAL - Must Match)
-${locationKeyword ? `- MUST mention "${locationKeyword}" (the city/province in user's query) to be considered relevant.` : '- No specific location keyword in query.'}
-- If location doesn't match, score should be 0-10.
+### Location Matching (Very Important)
+${locationKeyword ? `- If search result mentions "${locationKeyword}" (the city/province in user's query), score should be at least 80. This is a STRONG relevance signal.` : '- No specific location keyword in query.'}
 
-### Content Relevance (CRITICAL)
-- 90-100: Highly relevant - The result is a SPECIFIC ARCHITECTURE CASE, addresses user's query directly (same topic, location, and scope). Must be a case study, not news.
-- 60-89: Moderately relevant - Related architecture/city planning but may lack details or specific information.
-- 30-59: Somewhat relevant - Tangentially related but not a proper case study.
-- 0-29: Not relevant - Unrelated topics (different country, different city, unrelated industry).
-
-### Content Quality Checks
-- Is it a specific case study? (YES: score 80+, NO: score 0-30)
-- Does it have detailed information? (YES: score 70+, NO: score 0-40)
-- Is it a news article? (YES: score 0-20, NO: score 60+)
+### Content Relevance (Important)
+- 90-100: Highly relevant - The result directly addresses user's query (same topic, location, and scope)
+- 70-89: Moderately relevant - Related topic but may differ in location, scale, or scope
+- 50-69: Somewhat relevant - Tangentially related architecture projects
+- 0-49: Not relevant - Unrelated topics (e.g., different country, different city, unrelated industry)
 
 ## Task
 Provide a brief reason for rating in 1-2 sentences, highlighting:
-1. Location matching (CRITICAL - if doesn't match, score should be 0-10)
-2. Whether it's a specific case study (CRITICAL - if not, score should be 0-30)
-3. Content quality and detail
+1. Location matching (if applicable)
+2. Topic relevance
+3. Content quality
 
 Return ONLY valid JSON:
 {
-  "relevance_score": number (0-100, BE STRICT),
-  "relevance_reason": "brief explanation (MUST mention if it's a case study)"
+  "relevance_score": number (0-100),
+  "relevance_reason": "brief explanation (mention location matching if applicable)"
 }
 `;
 
   try {
     const result = await callQwenModel(prompt, 300);
-    let relevanceScore = Math.min(100, Math.max(0, result.relevance_score || 0));
+    let relevanceScore = Math.min(100, Math.max(0, result.relevance_score || 50));
 
-    // 如果没有位置匹配，大幅降低分数
     if (locationKeyword) {
       const combinedContent = (searchResult.title + ' ' + searchResult.snippet + ' ' + (searchResult.content || '')).toLowerCase();
-      if (!combinedContent.includes(locationKeyword.toLowerCase())) {
-        console.warn(`[Relevance Evaluation] No location match: ${locationKeyword} not found in content`);
-        relevanceScore = Math.min(10, relevanceScore); // 最多10分
-      } else {
-        relevanceScore = Math.min(100, relevanceScore + 20);
+      if (combinedContent.includes(locationKeyword.toLowerCase())) {
+        relevanceScore = Math.min(100, relevanceScore + 25);
       }
     }
 
@@ -878,7 +693,7 @@ Return ONLY valid JSON:
     };
   } catch (error) {
     console.error('[Relevance Evaluation] Error:', error);
-    return { relevance_score: 10, relevance_reason: 'Unable to evaluate' };
+    return { relevance_score: 50, relevance_reason: 'Unable to evaluate' };
   }
 }
 
@@ -896,15 +711,9 @@ async function filterAndRankResults(query: string, searchResults: SearchResult[]
     })
   );
 
-  // 放宽过滤：保留相关性分数 >= 20 的结果（降低阈值以提高通过率）
-  const filteredResults = resultsWithRelevance.filter(result => result.relevance_score >= 20);
-  console.log(`[Relevance Filtering] Filtered to ${filteredResults.length} results (score >= 20)`);
-
-  // 排序
-  const sortedResults = filteredResults
+  const sortedResults = resultsWithRelevance
     .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
 
-  // 只返回前 max_results 个结果
   const topResults = sortedResults.slice(0, max_results);
 
   console.log(`[Relevance Filtering] Selected top ${topResults.length} results`);
@@ -972,90 +781,17 @@ async function extractAllInformation(content: string, title: string, url: string
     console.error('[Master Extraction] Complex extraction error:', error);
   }
 
-  // 矛盾检测：起止时间 vs 建设阶段
-  try {
-    const currentYear = new Date().getFullYear();
-    const endYearMatch = result.startDate.match(/(\d{4})/);
-    
-    if (endYearMatch) {
-      const endYear = parseInt(endYearMatch[1]);
-      
-      // 检查建设阶段是否包含"至今"、"持续"、"进行中"等词
-      const phaseText = result.constructionPhase.join(' ');
-      const ongoingKeywords = ['至今', '持续', '进行中', '在建', '建设中', '运营中', '实施中'];
-      const hasOngoingKeyword = ongoingKeywords.some(keyword => phaseText.includes(keyword));
-      
-      // 如果结束年份 < 当前年份，但建设阶段包含"至今"等词，则有矛盾
-      if (endYear < currentYear && hasOngoingKeyword) {
-        console.warn('[Contradiction Detection] Found contradiction:');
-        console.warn(`  End year: ${endYear}, Current year: ${currentYear}`);
-        console.warn(`  Phase text contains ongoing keyword: ${phaseText.substring(0, 100)}...`);
-        
-        // 在示范意义中添加矛盾说明
-        result.demonstrationValue = `⚠️ 时间矛盾：项目起止时间显示截至${endYear}年，但建设阶段描述包含"持续/进行中/至今"等词汇，可能与当前时间（${currentYear}年）不符。\n\n${result.demonstrationValue}`;
-      }
-    }
-  } catch (error) {
-    console.error('[Contradiction Detection] Error:', error);
-  }
-
   console.log('[Master Extraction] Extraction completed');
   return result;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { q, urls, max_results = 1, engine = 'baidu' } = await request.json();
+    const { q, max_results = 1 } = await request.json();
 
-    // 模式 1：URL 输入模式（用户直接提供 URL）
-    if (urls && Array.isArray(urls) && urls.length > 0) {
-      console.log(`[Smart Search] URL Mode: ${urls.length} URLs provided`);
-
-      // 爬取所有提供的 URL
-      console.log('[Smart Search] Fetching page contents...');
-      const contentMap = await fetchMultiplePages(urls);
-      console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
-
-      if (contentMap.size === 0) {
-        throw new Error('无法爬取任何提供的 URL，请检查 URL 是否正确');
-      }
-
-      // 合并所有网页的内容
-      const mergedContent = Array.from(contentMap.entries())
-        .map(([url, content]) => {
-          return `=== URL: ${url} ===\n${content}`;
-        })
-        .filter(item => item.length > 100)
-        .join('\n\n');
-
-      const firstUrl = urls[0];
-      const caseExtraction = await extractAllInformation(mergedContent, '自定义案例', firstUrl);
-
-      // 更新信息来源
-      caseExtraction.infoSource = urls.join('\n');
-      caseExtraction.dataQuality = contentMap.size > 0 ? '高（多来源信息补全）' : '中（单来源）';
-
-      console.log('[Smart Search] All extraction completed!');
-
-      return NextResponse.json({
-        success: true,
-        mode: 'url',
-        urls,
-        case_extraction: caseExtraction,
-        metadata: {
-          timestamp: new Date().toISOString(),
-          extraction_mode: 'URL 输入模式（用户直接提供 URL）',
-          extraction_calls: 7,
-          data_quality: caseExtraction.dataQuality,
-          source_count: urls.length,
-        },
-      });
-    }
-
-    // 模式 2：搜索模式（使用本地搜索服务）
     if (!q) {
       return NextResponse.json(
-        { success: false, error: 'Missing required parameter: q (for search mode) or urls (for URL mode)' },
+        { success: false, error: 'Missing required parameter: q' },
         { status: 400 }
       );
     }
@@ -1063,177 +799,26 @@ export async function POST(request: NextRequest) {
     console.log(`[Smart Search] Query: ${q}, Max Results: ${max_results}`);
     console.log(`[Smart Search] Using Local Qwen Model: ${process.env.LOCAL_QWEN_API_URL}`);
 
-    console.log('[Smart Search] Step 1: Searching with local web search API...');
-
-    // 优化搜索关键词：添加建筑、案例、规划等相关关键词
-    const relatedKeywords = ['建筑案例', '城市规划', '生态城', '绿色建筑', '项目案例', '示范工程'];
-    let optimizedQuery = q;
-
-    // 如果查询词不包含相关关键词，则添加第一个关键词
-    const hasKeyword = relatedKeywords.some(keyword => q.includes(keyword));
-    if (!hasKeyword) {
-      optimizedQuery = `${q} ${relatedKeywords[0]}`;
-      console.log(`[Smart Search] Optimized query: "${q}" → "${optimizedQuery}"`);
-    }
-
-    // 调用本地 Web 搜索 API（使用优化后的搜索词）
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-    const webSearchUrl = `${baseUrl}/api/web-search`;
-    const searchResponse = await fetch(`${webSearchUrl}?q=${encodeURIComponent(optimizedQuery)}&engine=${engine}`);
-
-    if (!searchResponse.ok) {
-      throw new Error(`Local search service error: ${searchService.status}`);
-    }
-
-    const searchData = await searchResponse.json();
-    const rawSearchResults = searchData.data || [];
+    console.log('[Smart Search] Step 1: Searching with Tavily API...');
+    const rawSearchResults = await searchWithTavily(q, max_results);
     console.log(`[Smart Search] Found ${rawSearchResults.length} raw search results`);
 
-    if (rawSearchResults.length === 0) {
-      throw new Error('没有找到相关的搜索结果。请尝试：1) 使用其他搜索词；2) 使用 URL 输入模式直接提供网页链接');
+    console.log('[Smart Search] Step 2: Evaluating relevance...');
+    const searchResults = await filterAndRankResults(q, rawSearchResults, max_results);
+    console.log(`[Smart Search] Selected ${searchResults.length} results`);
+
+    if (searchResults.length === 0) {
+      throw new Error('没有找到相关的搜索结果');
     }
 
-    console.log('[Smart Search] Step 2: Fetching page contents (for information completion)...');
-    const searchUrls = rawSearchResults.slice(0, max_results * 10).map(r => r.url);
-    const contentMap = await fetchMultiplePages(searchUrls);
-    console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
-
-    // 格式化搜索结果
-    const searchResults = rawSearchResults.map((item: any) => ({
-      title: item.title || '未命名',
-      url: item.url,
-      snippet: item.snippet || '',
-      content: contentMap.get(item.url) || '',
-      source: 'local-search-service',
-      score: 0,
-    }));
-
-    // 定义高质量域名白名单
-    const highQualityDomains = [
-      'gov.cn',           // 政府网站
-      'mohurd.gov.cn',    // 住建部
-      'people.com.cn',     // 人民网
-      'xinhuanet.com',    // 新华网
-      'baike.baidu.com',  // 百度百科
-      'zh.wikipedia.org', // 维基百科
-      'archdaily.com',    // 建筑 daily
-      'gooood.cn',        // 谷德设计网
-      'cn.archdaily.com', // 中国建筑 daily
-      'sina.com.cn',      // 新浪
-      'sohu.com',         // 搜狐
-      '163.com',          // 网易
-      'qq.com',           // 腾讯
-    ];
-
-    console.log(`[Quality Filtering] Before: ${searchResults.length} results`);
-
-    // 严格质量过滤：移除低质量结果
-    const qualityFilters = [
-      // 过滤条件 1：通用链接页
-      (result: SearchResult) => !result.url.includes('baidu.com/link'),
-
-      // 过滤条件 2：新闻文章（不包含详细案例信息）
-      (result: SearchResult) => !result.title.includes('新闻') &&
-                           !result.title.includes('2017') &&
-                           !result.title.includes('2018') &&
-                           !result.title.includes('2019') &&
-                           !result.title.includes('2020'),
-
-      // 过滤条件 3：内容太短（少于 200 字符）
-      (result: SearchResult) => !result.content || result.content.length > 200,
-
-      // 过滤条件 4：标题太短（少于 5 个字符）
-      (result: SearchResult) => result.title && result.title.length > 5,
-
-      // 过滤条件 5：标题和摘要完全相同
-      (result: SearchResult) => result.title !== result.snippet,
-
-      // 过滤条件 6：不包含案例相关关键词
-      (result: SearchResult) => {
-        const content = (result.title + ' ' + result.snippet).toLowerCase();
-        return content.includes('案例') ||
-               content.includes('项目') ||
-               content.includes('规划') ||
-               content.includes('生态');
-      },
-
-      // 过滤条件 7：高质量域名优先（加分项）
-      (result: SearchResult) => {
-        const isHighQualityDomain = highQualityDomains.some(domain =>
-          result.url.includes(domain)
-        );
-        return true; // 不过滤，但用于排序
-      }
-    ];
-
-    // 应用所有过滤条件
-    const filteredResults = searchResults.filter(result =>
-      qualityFilters.slice(0, 6).every(filter => filter(result))
-    );
-
-    console.log(`[Quality Filtering] After: ${filteredResults.length} results`);
-
-    // 如果过滤后结果太少，放宽过滤条件
-    let finalResults: SearchResult[];
-    if (filteredResults.length >= 3) {
-      finalResults = filteredResults;
-    } else {
-      console.log('[Quality Filtering] Too few results, relaxing filters...');
-      finalResults = searchResults.filter(result =>
-        // 只保留最重要的过滤条件
-        !result.url.includes('baidu.com/link') &&
-        (!result.content || result.content.length > 200) &&
-        result.title && result.title.length > 5
-      ).slice(0, 10); // 最多保留 10 个结果
-    }
-
-    // 优化排序：高质量域名优先 + 内容长度优先
-    finalResults.sort((a, b) => {
-      // 优先级 1：高质量域名
-      const aHighQuality = highQualityDomains.some(domain => a.url.includes(domain));
-      const bHighQuality = highQualityDomains.some(domain => b.url.includes(domain));
-      if (aHighQuality && !bHighQuality) return -1;
-      if (!aHighQuality && bHighQuality) return 1;
-
-      // 优先级 2：内容长度（更长的优先）
-      const aContentLength = a.content ? a.content.length : 0;
-      const bContentLength = b.content ? b.content.length : 0;
-      return bContentLength - aContentLength;
-    });
-
-    console.log(`[Quality Filtering] Final: ${finalResults.length} results`);
-
-    console.log('[Smart Search] Step 3: Merging contents and extracting information...');
-    // 合并所有网页的内容
-    const mergedContent = Array.from(contentMap.entries())
-      .map(([url, content]) => {
-        const searchResult = searchResults.find(r => r.url === url);
-        return {
-          url,
-          title: searchResult?.title || '',
-          content: content || '',
-        };
-      })
-      .filter(item => item.content && item.content.length > 100)
-      .sort((a, b) => b.content.length - a.content.length)
-      .map(item => {
-        return `=== ${item.title} ===\n${item.content}`;
-      })
-      .join('\n\n');
-
+    console.log('[Smart Search] Step 3: Extracting information (fine extraction strategy)...');
     const topResult = searchResults[0];
-    const enrichedContent = (topResult.content || '') + '\n\n' + mergedContent;
+    const content = topResult.content || '';
 
-    const caseExtraction = await extractAllInformation(enrichedContent, topResult.title, topResult.url);
-
-    // 更新信息来源，显示所有使用的 URL
-    const infoSources = Array.from(contentMap.keys()).slice(0, 10);
-    caseExtraction.infoSource = infoSources.join('\n');
-    caseExtraction.dataQuality = contentMap.size > 0 ? '高（多来源信息补全）' : '中（单来源）';
+    const caseExtraction = await extractAllInformation(content, topResult.title, topResult.url);
 
     console.log('[Smart Search] All extraction completed!');
     console.log('[Smart Search] Final extraction:', JSON.stringify(caseExtraction, null, 2));
-    console.log('[Smart Search] Info sources:', infoSources.length);
 
     const avgRelevanceScore = searchResults.reduce((sum, r) => sum + (r.relevance_score || 0), 0) / searchResults.length;
 

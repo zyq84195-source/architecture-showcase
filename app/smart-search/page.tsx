@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -12,40 +12,50 @@ interface SearchResult {
   url: string;
   snippet: string;
   source: string;
+  content?: string;
+  images?: string[];
+  score?: number;
+  published_date?: string;
+  relevance_score?: number;  // 相关性评分（0-100）
+  relevance_reason?: string;  // 相关性原因说明
 }
 
 /**
- * 案例详细分析接口（完整字段）
+ * 案例真实信息提取接口
  */
-interface CaseAnalysis {
-  // 基本信息
-  caseName: string;              // 案例名称
-  location: string;               // 所在区位
-  projectScale: string;           // 项目规模
-  totalInvestment: string;        // 总投资额
-  participants: string;           // 参与主体
-  startDate: string;             // 起止时间
-  endDate: string;               // 结束时间
-  awardStatus: string;            // 获奖情况
-  caseType: string;              // 案例类型
-  sustainabilityTargets: string[]; // 可持续目标
-  demonstrationValue: string;     // 示范意义
-  projectIntroduction: string;     // 项目介绍
-  constructionPhase: string[];    // 建设阶段
-  awardEvaluation: string;        // 项目获奖评价
-  projectInitiatives: string[];  // 项目举措
-  infoSource: string;            // 信息来源
-  caseImages: string[];          // 案例图片
+interface CaseExtraction {
+  caseName: string;
+  location: string;
+  projectScale: string;
+  totalInvestment: string;
+  participants: string;
+  startDate: string;
+  endDate: string;
+  awardStatus: string;
+  caseType: string;
+  sustainabilityTargets: string[];
+  demonstrationValue: string;
+  projectIntroduction: string;
+  constructionPhase: string[];
+  awardEvaluation: string;
+  projectInitiatives: string[];
+  infoSource: string;
+  caseImages: string[];
+  extractionSource: string;
+  dataQuality: string;
+}
 
-  // 智能分析
-  summary: string;               // 总体总结
-  keyInsights: string[];          // 关键洞察
-  designConcepts: string[];      // 设计理念
-  sustainabilityAnalysis: string[]; // 可持续性分析
-  architecturalStyle: string;    // 建筑风格
-  innovationPoints: string[];    // 创新点
-  challenges: string[];          // 挑战与解决方案
-  recommendations: string[];     // 建议
+/**
+ * 对比分析接口
+ */
+interface ComparisonAnalysis {
+  similarity: number;
+  similarity_level: string;
+  common_points: string[];
+  differences: string[];
+  lessons: string[];
+  suggestions: string[];
+  detailed_comparison: string;
 }
 
 /**
@@ -56,32 +66,85 @@ interface SmartSearchResponse {
   query: string;
   search_results: SearchResult[];
   detailed_results: SearchResult[];
-  case_analysis?: CaseAnalysis;
+  case_extraction: CaseExtraction;
   metadata?: {
     timestamp: string;
     search_engine: string;
     ai_model: string;
     total_results: number;
-    crawled_results: number;
-    analysis_fields: string;
+    raw_results: number;
+    extraction_mode: string;
+    data_quality: string;
+    relevance_score: number;
+    relevance_summary: string;
+  };
+}
+
+/**
+ * 网站已有案例
+ */
+interface ExistingCase {
+  id: string;
+  title: string;
+  description: string;
+}
+
+/**
+ * 对比分析响应接口
+ */
+interface CompareResponse {
+  success: boolean;
+  search_case: CaseExtraction;
+  existing_case: {
+    id: string;
+    title: string;
+    description: string;
+  };
+  comparison_analysis: ComparisonAnalysis;
+  metadata?: {
+    timestamp: string;
+    ai_model: string;
+    similarity_score: number;
+    similarity_level: string;
   };
 }
 
 export default function SmartSearchPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [max_results, setMaxResults] = useState(3)
-  const [summary_length, setSummaryLength] = useState(500)
+  const [searchEngine, setSearchEngine] = useState('bing') // baidu 或 bing
   
   const [isSearching, setIsSearching] = useState(false)
+  const [isComparing, setIsComparing] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [detailedResults, setDetailedResults] = useState<SearchResult[]>([])
-  const [caseAnalysis, setCaseAnalysis] = useState<CaseAnalysis | null>(null)
+  const [caseExtraction, setCaseExtraction] = useState<CaseExtraction | null>(null)
   
   const [error, setError] = useState('')
-  const [suggestion, setSuggestion] = useState('')
-
+  
+  // 对比相关状态
+  const [existingCases, setExistingCases] = useState<ExistingCase[]>([])
+  const [selectedExistingCaseId, setSelectedExistingCaseId] = useState('')
+  const [comparisonAnalysis, setComparisonAnalysis] = useState<ComparisonAnalysis | null>(null)
+  const [showComparison, setShowComparison] = useState(false)
+  
   const quickSearchTags = ['城市更新', '文化保护', '历史街区', '社区更新', '可持续发展', '绿色建筑', '宜居', '人文', '乡村振兴', '工业遗产', '历史建筑', '公共建筑', '住宅设计', '商业综合体', '文化中心', '博物馆', '图书馆']
+
+  // 加载网站已有案例
+  useEffect(() => {
+    loadExistingCases()
+  }, [])
+
+  const loadExistingCases = async () => {
+    try {
+      const response = await fetch('/api/existing-cases')
+      const data = await response.json()
+      setExistingCases(data.cases || [])
+    } catch (error) {
+      console.error('Failed to load existing cases:', error)
+    }
+  }
 
   // 智能搜索
   const handleSmartSearch = async () => {
@@ -91,9 +154,10 @@ export default function SmartSearchPage() {
     setHasSearched(true)
     setSearchResults([])
     setDetailedResults([])
-    setCaseAnalysis(null)
+    setCaseExtraction(null)
     setError('')
-    setSuggestion('')
+    setShowComparison(false)
+    setComparisonAnalysis(null)
 
     try {
       const response = await fetch('/api/smart-search', {
@@ -104,7 +168,7 @@ export default function SmartSearchPage() {
         body: JSON.stringify({
           q: searchTerm,
           max_results: max_results,
-          summary_length: summary_length,
+          engine: searchEngine,
         }),
       })
 
@@ -113,30 +177,64 @@ export default function SmartSearchPage() {
       if (data.success) {
         setSearchResults(data.search_results || [])
         setDetailedResults(data.detailed_results || [])
-        setCaseAnalysis(data.case_analysis || null)
+        setCaseExtraction(data.case_extraction)
         console.log('[Smart Search] Results:', data)
       } else {
         setError(data.error || '智能搜索失败')
-        setSuggestion('请检查网络连接或稍后重试')
       }
     } catch (error: any) {
       setError(`智能搜索失败：${error.message}`)
-      setSuggestion('请检查网络连接或稍后重试')
     } finally {
       setIsSearching(false)
+    }
+  }
+
+  // 开始对比
+  const handleCompare = async () => {
+    if (!caseExtraction || !selectedExistingCaseId) return
+
+    setIsComparing(true)
+    setShowComparison(true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/compare-cases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          search_result: caseExtraction,
+          existing_case_id: selectedExistingCaseId,
+        }),
+      })
+
+      const data: CompareResponse = await response.json()
+
+      if (data.success) {
+        setComparisonAnalysis(data.comparison_analysis)
+        console.log('[Compare Cases] Results:', data)
+      } else {
+        setError(data.error || '对比分析失败')
+      }
+    } catch (error: any) {
+      setError(`对比分析失败：${error.message}`)
+    } finally {
+      setIsComparing(false)
     }
   }
 
   const handleClear = () => {
     setSearchTerm('')
     setMaxResults(3)
-    setSummaryLength(500)
     setSearchResults([])
     setDetailedResults([])
-    setCaseAnalysis(null)
+    setCaseExtraction(null)
     setHasSearched(false)
     setError('')
-    setSuggestion('')
+    setShowComparison(false)
+    setComparisonAnalysis(null)
+    setSelectedExistingCaseId('')
   }
 
   return (
@@ -176,10 +274,10 @@ export default function SmartSearchPage() {
         {/* 搜索标题 */}
         <div className="text-center mb-8 animate-fade-in">
           <h1 className="text-4xl font-bold text-heading mb-4">
-            🤖 AI 智能搜索 + 案例详细分析
+            🔍 真实案例搜索 + 对比分析
           </h1>
           <p className="text-xl md:text-2xl text-body mb-6">
-            搜索真实建筑案例，AI 提取完整案例信息（16个详细字段）
+            搜索真实建筑案例，与网站已有案例进行深度对比分析
           </p>
           <div className="flex flex-wrap justify-center gap-2 mb-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-2">
@@ -192,11 +290,11 @@ export default function SmartSearchPage() {
             </div>
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2 flex items-center gap-2">
               <span className="text-2xl">🤖</span>
-              <span className="text-green-900 font-medium">AI 深度分析</span>
+              <span className="text-green-900 font-medium">AI 信息提取</span>
             </div>
             <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
-              <span className="text-2xl">📊</span>
-              <span className="text-orange-900 font-medium">16个详细字段</span>
+              <span className="text-2xl">🔄</span>
+              <span className="text-orange-900 font-medium">案例对比</span>
             </div>
           </div>
         </div>
@@ -217,39 +315,36 @@ export default function SmartSearchPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                最大结果数
-              </label>
-              <select
-                value={max_results}
-                onChange={(e) => setMaxResults(parseInt(e.target.value))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={1}>1 个结果</option>
-                <option value={2}>2 个结果</option>
-                <option value={3}>3 个结果（默认）</option>
-                <option value={5}>5 个结果</option>
-                <option value={10}>10 个结果</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                AI 总结长度
-              </label>
-              <select
-                value={summary_length}
-                onChange={(e) => setSummaryLength(parseInt(e.target.value))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={300}>300 字</option>
-                <option value={500}>500 字（默认）</option>
-                <option value={800}>800 字</option>
-                <option value={1000}>1000 字</option>
-                <option value={1500}>1500 字</option>
-              </select>
-            </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              最大结果数
+            </label>
+            <select
+              value={max_results}
+              onChange={(e) => setMaxResults(parseInt(e.target.value))}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={1}>1 个结果</option>
+              <option value={2}>2 个结果</option>
+              <option value={3}>3 个结果（默认）</option>
+              <option value={5}>5 个结果</option>
+              <option value={10}>10 个结果</option>
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              搜索引擎
+            </label>
+            <select
+              value={searchEngine}
+              onChange={(e) => setSearchEngine(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="tavily">🚀 Tavily 搜索（AI 驱动，推荐）</option>
+              <option value="baidu">🇨🇳 百度搜索（中文支持更好）</option>
+              <option value="bing">🌐 Bing 搜索（国际搜索）</option>
+            </select>
           </div>
 
           <div className="flex gap-4 mb-4">
@@ -258,7 +353,7 @@ export default function SmartSearchPage() {
               disabled={isSearching}
               className="btn-primary-elegant px-8 flex-1"
             >
-              {isSearching ? '🤖 AI 深度分析中...' : '🚀 开始智能搜索'}
+              {isSearching ? '🔍 搜索中...' : '🚀 开始搜索'}
             </Button>
             <Button
               onClick={handleClear}
@@ -293,8 +388,8 @@ export default function SmartSearchPage() {
           <div className="flex items-center justify-center py-12 animate-fade-in">
             <div className="flex flex-col items-center gap-4">
               <div className="animate-spin w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
-              <p className="text-gray-600">正在深度分析中，这可能需要 15-30 秒...</p>
-              <p className="text-sm text-gray-500">AI 正在提取 16 个详细字段并生成深度分析...</p>
+              <p className="text-gray-600">正在搜索中，这可能需要 5-15 秒...</p>
+              <p className="text-sm text-gray-500">AI 正在提取真实信息（不编造）...</p>
             </div>
           </div>
         )}
@@ -305,279 +400,284 @@ export default function SmartSearchPage() {
             <div className="flex items-start gap-3">
               <span className="text-2xl">⚠️</span>
               <div className="flex-1">
-                <h3 className="font-semibold text-red-900 mb-1">搜索失败</h3>
-                <p className="text-red-700 mb-2">{error}</p>
-                {suggestion && (
-                  <p className="text-sm text-red-600 bg-red-100 rounded px-3 py-2">
-                    💡 建议：{suggestion}
-                  </p>
-                )}
+                <h3 className="font-semibold text-red-900 mb-1">操作失败</h3>
+                <p className="text-red-700">{error}</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* AI 案例详细分析 */}
-        {hasSearched && !isSearching && caseAnalysis && (
+        {/* 搜索结果 */}
+        {hasSearched && !isSearching && caseExtraction && (
           <div className="animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6 mb-6">
-              <h3 className="font-bold text-purple-900 mb-4 text-xl">🏗️ 案例详细分析（16 个字段）</h3>
-
-              {/* 案例基本信息 */}
-              <div className="bg-white rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-purple-700 mb-4 text-lg">📋 案例基本信息</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <span className="text-sm text-gray-600">案例名称</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.caseName}</p>
+            {/* 搜索质量摘要 */}
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-green-900 mb-4 text-xl">📊 搜索质量报告</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-green-600 mb-2">
+                    {searchResults.length}
                   </div>
-                  <div>
-                    <span className="text-sm text-gray-600">所在区位</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.location}</p>
+                  <div className="text-sm text-gray-600">相关结果</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    平均相关性: {Math.round((searchResults.reduce((sum, r) => sum + (r.relevance_score || 0), 0) / searchResults.length))}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <span className="text-sm text-gray-600">项目规模</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.projectScale}</p>
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-blue-600 mb-2">
+                    {Math.round((searchResults.reduce((sum, r) => sum + (r.relevance_score || 0), 0) / searchResults.length))}
                   </div>
-                  <div>
-                    <span className="text-sm text-gray-600">总投资额</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.totalInvestment}</p>
-                  </div>
+                  <div className="text-sm text-gray-600">平均相关性</div>
+                  <div className="text-xs text-gray-500 mt-1">0-100 分</div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <span className="text-sm text-gray-600">参与主体</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.participants}</p>
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-purple-600 mb-2">
+                    {caseExtraction.dataQuality === '高' ? '高' : caseExtraction.dataQuality === '中' ? '中' : '低'}
                   </div>
-                  <div>
-                    <span className="text-sm text-gray-600">获奖情况</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.awardStatus}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <span className="text-sm text-gray-600">案例类型</span>
-                    <p className="text-gray-900 font-medium">{caseAnalysis.caseType}</p>
-                  </div>
-                  <div>
-                    <span className="text-sm text-gray-600">可持续目标</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {caseAnalysis.sustainabilityTargets.map((target, index) => (
-                        <span key={index} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                          {target}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                  <div className="text-sm text-gray-600">数据质量</div>
+                  <div className="text-xs text-gray-500 mt-1">AI 评估</div>
                 </div>
               </div>
 
-              {/* 总体总结 */}
-              <div className="bg-white rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-purple-700 mb-3 text-lg">📋 总体总结</h4>
-                <p className="text-gray-700 leading-relaxed">{caseAnalysis.summary}</p>
+              <div className="bg-white rounded-lg p-4">
+                <h4 className="font-semibold text-green-700 mb-3">📝 搜索说明</h4>
+                <p className="text-gray-700">
+                  系统从更多原始结果中筛选出了最相关的 {searchResults.length} 个案例。
+                  相关性评分由 AI 评估，0-100 分，分数越高表示越相关。
+                  数据质量评估基于网页内容的丰富程度。
+                </p>
               </div>
+            </div>
 
-              {/* 示范意义 */}
-              <div className="bg-white rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-purple-700 mb-3 text-lg">💡 示范意义</h4>
-                <p className="text-gray-700 leading-relaxed">{caseAnalysis.demonstrationValue}</p>
-              </div>
-
-              {/* 项目介绍 */}
-              <div className="bg-white rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-purple-700 mb-3 text-lg">📝 项目介绍</h4>
-                <p className="text-gray-700 leading-relaxed">{caseAnalysis.projectIntroduction}</p>
-              </div>
-
-              {/* 建设阶段 */}
-              {caseAnalysis.constructionPhase && caseAnalysis.constructionPhase.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🏗️ 建设阶段</h4>
-                  <ul className="space-y-2">
-                    {caseAnalysis.constructionPhase.map((phase, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">•</span>
-                        <span className="text-gray-700">{phase}</span>
-                      </li>
-                    ))}
-                  </ul>
+            {/* 搜索到的案例信息 */}
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-blue-900 mb-4 text-xl">📋 搜索到的案例信息（完整版：15 个字段）</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <span className="text-sm text-gray-600">案例名称</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.caseName}</p>
                 </div>
-              )}
-
-              {/* 项目举措 */}
-              {caseAnalysis.projectInitiatives && caseAnalysis.projectInitiatives.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🚀 项目举措</h4>
-                  <ul className="space-y-2">
-                    {caseAnalysis.projectInitiatives.map((initiative, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">•</span>
-                        <span className="text-gray-700">{initiative}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div>
+                  <span className="text-sm text-gray-600">所在区位</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.location}</p>
                 </div>
-              )}
-
-              {/* 起止时间 */}
-              {caseAnalysis.startDate && caseAnalysis.startDate !== '信息缺失' && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">📅 起止时间</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-600">开始时间</span>
-                      <span className="text-gray-900 font-medium">{caseAnalysis.startDate}</span>
-                    </div>
-                    {caseAnalysis.endDate && caseAnalysis.endDate !== '信息缺失' && (
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-600">结束时间</span>
-                        <span className="text-gray-900 font-medium">{caseAnalysis.endDate}</span>
-                      </div>
-                    )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <span className="text-sm text-gray-600">项目规模</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.projectScale}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">总投资额</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.totalInvestment}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <span className="text-sm text-gray-600">参与主体</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.participants}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">起止时间</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.startDate} - {caseExtraction.endDate}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <span className="text-sm text-gray-600">获奖情况</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.awardStatus}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">案例类型</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.caseType}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <span className="text-sm text-gray-600">可持续目标</span>
+                  <div className="flex flex-wrap gap-2">
+                    {caseExtraction.sustainabilityTargets.map((target, index) => (
+                      <span key={index} className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                        {target}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              )}
-
-              {/* 项目获奖评价 */}
-              {caseAnalysis.awardEvaluation && caseAnalysis.awardEvaluation !== '' && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🏆 项目获奖评价</h4>
-                  <p className="text-gray-700 leading-relaxed">{caseAnalysis.awardEvaluation}</p>
+                <div>
+                  <span className="text-sm text-gray-600">示范意义</span>
+                  <p className="text-gray-900 font-medium">{caseExtraction.demonstrationValue}</p>
                 </div>
-              )}
-
-              {/* 关键洞察 */}
-              {caseAnalysis.keyInsights && caseAnalysis.keyInsights.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🎯 关键洞察</h4>
-                  <ul className="space-y-3">
-                    {caseAnalysis.keyInsights.map((insight, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">✨</span>
-                        <span className="text-gray-700">{insight}</span>
-                      </li>
-                    ))}
-                  </ul>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-700 mb-3">📝 项目介绍</h4>
+                <p className="text-gray-700 leading-relaxed">{caseExtraction.projectIntroduction}</p>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-700 mb-3">💡 示范意义</h4>
+                <p className="text-gray-700 leading-relaxed">{caseExtraction.demonstrationValue}</p>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-700 mb-3">🏗 建设阶段</h4>
+                <ul className="space-y-2">
+                  {caseExtraction.constructionPhase.map((phase, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-purple-600 mt-1">•</span>
+                      <span className="text-gray-700">{phase}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-700 mb-3">🚀 项目举措</h4>
+                <ul className="space-y-2">
+                  {caseExtraction.projectInitiatives.map((initiative, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-purple-600 mt-1">•</span>
+                      <span className="text-gray-700">{initiative}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-blue-700 mb-3">🏆 项目获奖评价</h4>
+                <p className="text-gray-700 leading-relaxed">{caseExtraction.awardEvaluation}</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-700 mb-3">📊 数据质量</h4>
+                  <p className="text-gray-700">{caseExtraction.dataQuality}</p>
                 </div>
-              )}
-
-              {/* 建筑风格 */}
-              {caseAnalysis.architecturalStyle && caseAnalysis.architecturalStyle !== '信息缺失' && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🏛️ 建筑风格</h4>
-                  <p className="text-gray-900 font-medium">{caseAnalysis.architecturalStyle}</p>
-                </div>
-              )}
-
-              {/* 设计理念 */}
-              {caseAnalysis.designConcepts && caseAnalysis.designConcepts.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🎨 设计理念</h4>
-                  <ul className="space-y-2">
-                    {caseAnalysis.designConcepts.map((concept, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">💭</span>
-                        <span className="text-gray-700">{concept}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* 创新点 */}
-              {caseAnalysis.innovationPoints && caseAnalysis.innovationPoints.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">💡 创新点</h4>
-                  <ul className="space-y-2">
-                    {caseAnalysis.innovationPoints.map((point, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">💡</span>
-                        <span className="text-gray-700">{point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* 可持续性分析 */}
-              {caseAnalysis.sustainabilityAnalysis && caseAnalysis.sustainabilityAnalysis.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🌱 可持续性分析</h4>
-                  <ul className="space-y-3">
-                    {caseAnalysis.sustainabilityAnalysis.map((item, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">🌿</span>
-                        <span className="text-gray-700">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* 挑战与解决方案 */}
-              {caseAnalysis.challenges && caseAnalysis.challenges.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">🔥 挑战与解决方案</h4>
-                  <ul className="space-y-3">
-                    {caseAnalysis.challenges.map((challenge, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">⚠️</span>
-                        <span className="text-gray-700">{challenge}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* 建议 */}
-              {caseAnalysis.recommendations && caseAnalysis.recommendations.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">📌 建议</h4>
-                  <ul className="space-y-2">
-                    {caseAnalysis.recommendations.map((recommendation, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <span className="text-purple-600 mt-1">📝</span>
-                        <span className="text-gray-700">{recommendation}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* 信息来源 */}
-              <div className="bg-white rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-purple-700 mb-3 text-lg">🔍 信息来源</h4>
-                <div className="flex items-center gap-3">
-                  <span className="text-purple-600 mt-1">📍</span>
-                  <a href={caseAnalysis.infoSource} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium">
-                    {caseAnalysis.infoSource}
+                <div className="bg-white rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-700 mb-3">📍 信息来源</h4>
+                  <a href={caseExtraction.infoSource} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">
+                    {caseExtraction.infoSource}
                   </a>
                 </div>
               </div>
+            </div>
 
-              {/* 案例图片 */}
-              {caseAnalysis.caseImages && caseAnalysis.caseImages.length > 0 && (
-                <div className="bg-white rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold text-purple-700 mb-3 text-lg">📸 案例图片</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {caseAnalysis.caseImages.map((imageUrl, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={imageUrl}
-                          alt={`案例图片 ${index + 1}`}
-                          className="w-full h-48 object-cover rounded-lg border border-gray-200"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 rounded-b-lg">
-                          <p className="text-white text-xs text-center">案例图片 {index + 1}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+            {/* 对比分析选择器 */}
+            <div className="elegant-card p-6 mb-6">
+              <h3 className="font-bold text-gray-900 mb-4 text-xl">🔄 选择已有案例进行对比</h3>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  选择网站已有案例
+                </label>
+                <select
+                  value={selectedExistingCaseId}
+                  onChange={(e) => setSelectedExistingCaseId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">-- 请选择案例 --</option>
+                  {existingCases.map((existingCase) => (
+                    <option key={existingCase.id} value={existingCase.id}>
+                      {existingCase.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Button
+                onClick={handleCompare}
+                disabled={!selectedExistingCaseId || isComparing}
+                className="btn-primary-elegant w-full"
+              >
+                {isComparing ? '🔄 对比分析中...' : '🚀 开始对比分析'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* 对比分析结果 */}
+        {showComparison && comparisonAnalysis && (
+          <div className="animate-fade-in" style={{ animationDelay: '0.3s' }}>
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-green-900 mb-4 text-xl">📊 对比分析结果</h3>
+
+              {/* 相似度评分 */}
+              <div className="bg-white rounded-lg p-6 mb-6 text-center">
+                <h4 className="font-semibold text-green-700 mb-4 text-lg">相似度评分</h4>
+                <div className="flex items-center justify-center gap-4 mb-4">
+                  <span className="text-6xl font-bold text-green-600">
+                    {comparisonAnalysis.similarity}
+                  </span>
+                  <span className="text-2xl text-green-600">/ 100</span>
                 </div>
-              )}
+                <div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-lg font-semibold">
+                  {comparisonAnalysis.similarity_level}相似度
+                </div>
+              </div>
+
+              {/* 详细对比分析 */}
+              <div className="bg-white rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-green-700 mb-3 text-lg">📝 详细对比分析</h4>
+                <p className="text-gray-700 leading-relaxed">{comparisonAnalysis.detailed_comparison}</p>
+              </div>
+
+              {/* 共同点 */}
+              <div className="bg-white rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-green-700 mb-3 text-lg">✅ 共同点</h4>
+                <ul className="space-y-2">
+                  {comparisonAnalysis.common_points.map((point, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-green-600 mt-1">•</span>
+                      <span className="text-gray-700">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* 差异点 */}
+              <div className="bg-white rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-green-700 mb-3 text-lg">⚠️ 差异点</h4>
+                <ul className="space-y-2">
+                  {comparisonAnalysis.differences.map((point, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-orange-600 mt-1">•</span>
+                      <span className="text-gray-700">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* 可借鉴经验 */}
+              <div className="bg-white rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-green-700 mb-3 text-lg">💡 可借鉴经验</h4>
+                <ul className="space-y-2">
+                  {comparisonAnalysis.lessons.map((lesson, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-purple-600 mt-1">•</span>
+                      <span className="text-gray-700">{lesson}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* 建议 */}
+              <div className="bg-white rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-green-700 mb-3 text-lg">📌 建议</h4>
+                <ul className="space-y-2">
+                  {comparisonAnalysis.suggestions.map((suggestion, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="text-blue-600 mt-1">•</span>
+                      <span className="text-gray-700">{suggestion}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         )}
@@ -585,18 +685,9 @@ export default function SmartSearchPage() {
         {/* 详细搜索结果 */}
         {hasSearched && !isSearching && detailedResults.length > 0 && (
           <div className="animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-heading">
-                📚 详细来源 ({detailedResults.length})
-              </h2>
-              <Button
-                onClick={handleClear}
-                variant="outline"
-                className="btn-secondary-elegant"
-              >
-                清空
-              </Button>
-            </div>
+            <h2 className="text-2xl font-bold text-heading mb-4">
+              📚 详细来源 ({detailedResults.length})
+            </h2>
 
             <div className="space-y-4">
               {detailedResults.map((result, index) => (
@@ -612,11 +703,9 @@ export default function SmartSearchPage() {
                     </a>
                   </h3>
                   <p className="text-sm text-gray-600 mb-2">
-                    来源：{result.source} | 
-                    爬取时间：{result.crawled_at ? new Date(result.crawled_at).toLocaleString('zh-CN') : 'N/A'}
+                    来源：{result.source}
                   </p>
-                  <p className="text-gray-700 mb-3">{result.description || result.snippet}</p>
-                  <p className="text-gray-600 text-sm">{result.content?.substring(0, 300) || '无内容...'}</p>
+                  <p className="text-gray-700 mb-3">{result.snippet}</p>
                   <a
                     href={result.url}
                     target="_blank"
