@@ -2,40 +2,52 @@ import { MetadataRoute } from 'next'
 // @ts-ignore
 import cases from '@/data/cases.json'
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://architecture-showcase.vercel.app'
+const BASE_URL = 'https://architecture-showcase.vercel.app'
 
-  // 首页
-  const routes: MetadataRoute.Sitemap = [
+export default function sitemap(): MetadataRoute.Sitemap {
+  const now = new Date()
+
+  // 公开页面
+  const staticPages: MetadataRoute.Sitemap = [
     {
-      url: baseUrl,
-      lastModified: new Date(),
+      url: BASE_URL,
+      lastModified: now,
       changeFrequency: 'daily',
-      priority: 1,
+      priority: 1.0,
     },
     {
-      url: `${baseUrl}/cases`,
-      lastModified: new Date(),
+      url: `${BASE_URL}/cases`,
+      lastModified: now,
       changeFrequency: 'daily',
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/search`,
-      lastModified: new Date(),
+      url: `${BASE_URL}/search`,
+      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    {
+      url: `${BASE_URL}/smart-search`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    },
+    {
+      url: `${BASE_URL}/about`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
   ]
 
-  // 所有案例页面
-  cases.forEach((caseItem: any) => {
-    routes.push({
-      url: `${baseUrl}/cases/${caseItem.id}`,
-      lastModified: new Date(caseItem.created_at),
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    })
-  })
+  // 每个案例详情页
+  const casePages: MetadataRoute.Sitemap = (cases as any[]).map((caseItem) => ({
+    url: `${BASE_URL}/cases/${caseItem.id}`,
+    lastModified: caseItem.created_at ? new Date(caseItem.created_at) : now,
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  }))
 
-  return routes
+  return [...staticPages, ...casePages]
 }

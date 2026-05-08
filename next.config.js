@@ -10,12 +10,16 @@ const nextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
+        protocol: 'https' as const,
         hostname: '**.supabase.co',
       },
     ],
     formats: ['image/avif', 'image/webp'],
   },
 };
+
+// Turbopack 已在 next 16 默认启用，构建字体问题用 webpack 回退
+// 下行仅在需要时取消注释：
+// nextConfig.turbopack = false;
 
 module.exports = nextConfig

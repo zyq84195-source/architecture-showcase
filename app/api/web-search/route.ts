@@ -146,9 +146,9 @@ async function searchWithBing(query: string, max_results: number): Promise<Searc
 
 export async function GET(request: NextRequest) {
   try {
-    const { q, engine = 'bing', max_results = 10 } = Object.fromEntries(
-      request.nextUrl.searchParams.entries()
-    );
+    const q = request.nextUrl.searchParams.get('q');
+    const engine = request.nextUrl.searchParams.get('engine') || 'bing';
+    const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
       return NextResponse.json(

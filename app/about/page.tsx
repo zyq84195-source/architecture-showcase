@@ -1,5 +1,24 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+
+export const metadata: Metadata = {
+  title: '关于我们 - Architecture Showcase',
+  description:
+    'Architecture Showcase 是一个致力于展示优秀建筑案例的专业平台，涵盖城市更新、文化保护、历史街区等领域。',
+  keywords: ['建筑案例平台', '关于我们', '城市更新', '建筑设计'],
+  openGraph: {
+    title: '关于我们 - Architecture Showcase',
+    description: '致力于展示优秀建筑案例的专业平台。',
+    url: 'https://architecture-showcase.vercel.app/about',
+    siteName: 'Architecture Showcase',
+    type: 'website',
+    locale: 'zh_CN',
+  },
+  alternates: {
+    canonical: 'https://architecture-showcase.vercel.app/about',
+  },
+}
 
 export default function AboutPage() {
   return (

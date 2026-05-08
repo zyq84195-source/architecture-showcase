@@ -78,6 +78,7 @@ interface SmartSearchResponse {
     relevance_score: number;
     relevance_summary: string;
   };
+  error?: string;
 }
 
 /**
@@ -107,6 +108,7 @@ interface CompareResponse {
     similarity_score: number;
     similarity_level: string;
   };
+  error?: string;
 }
 
 export default function SmartSearchPage() {

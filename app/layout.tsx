@@ -5,20 +5,45 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Architecture Showcase - 优秀建筑案例展示平台',
-  description: '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考。包含南京小西湖、广州恩宁路等经典建筑项目。',
-  keywords: '建筑案例, 城市更新, 文化保护, 历史街区, 建筑设计, 南京小西湖, 广州恩宁路',
+  title: {
+    default: 'Architecture Showcase - 优秀建筑案例展示平台',
+    template: '%s | Architecture Showcase',
+  },
+  description:
+    '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考。包含南京小西湖、广州恩宁路等经典建筑项目。',
+  keywords: [
+    '建筑案例',
+    '城市更新',
+    '文化保护',
+    '历史街区',
+    '建筑设计',
+    '南京小西湖',
+    '广州恩宁路',
+    '北京大栅栏',
+    '深圳南头古城',
+    '成都太古里',
+    '建筑案例展示',
+  ],
   authors: [{ name: 'Architecture Showcase' }],
+  creator: 'Architecture Showcase',
+  metadataBase: new URL('https://architecture-showcase.vercel.app'),
+  alternates: {
+    canonical: '/',
+  },
   openGraph: {
     title: 'Architecture Showcase - 优秀建筑案例展示平台',
-    description: '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考',
+    description:
+      '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考。',
     type: 'website',
     locale: 'zh_CN',
+    siteName: 'Architecture Showcase',
+    url: 'https://architecture-showcase.vercel.app',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Architecture Showcase - 优秀建筑案例展示平台',
-    description: '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考',
+    description:
+      '精心收录优秀建筑案例，从城市更新到文化保护，获取设计灵感与专业参考。',
   },
   robots: {
     index: true,
@@ -32,7 +57,8 @@ export const metadata: Metadata = {
     },
   },
   verification: {
-    google: '', // 需要添加Google Search Console验证码
+    // TODO: 添加 Google Search Console 验证码后填入
+    google: '',
   },
 }
 

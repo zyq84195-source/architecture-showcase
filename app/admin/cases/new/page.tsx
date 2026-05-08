@@ -1,3 +1,5 @@
+'use client'
+
 import { useSearchParams } from 'next/navigation';
 import CaseForm from '@/components/admin/CaseForm';
 

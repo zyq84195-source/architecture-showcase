@@ -57,9 +57,9 @@ async function callWebSearch(query: string, engine: string, max_results: number)
  * GET 请求处理
  */
 export async function GET(request: NextRequest) {
-  const { q, engine = 'bing', max_results = 10 } = Object.fromEntries(
-    request.nextUrl.searchParams.entries()
-  );
+  const q = request.nextUrl.searchParams.get('q');
+  const engine = request.nextUrl.searchParams.get('engine') || 'bing';
+  const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
   if (!q) {
     return NextResponse.json(

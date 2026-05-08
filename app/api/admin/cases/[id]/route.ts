@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 // GET - 获取单个案例
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!supabaseAdmin) {
@@ -14,10 +14,12 @@ export async function GET(
       );
     }
 
+    const { id } = await params;
+
     const { data, error } = await supabaseAdmin
       .from('cases')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error || !data) {
@@ -42,7 +44,7 @@ export async function GET(
 // PUT - 更新案例
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!supabaseAdmin) {
@@ -52,6 +54,7 @@ export async function PUT(
       );
     }
 
+    const { id } = await params;
     const body = await request.json();
 
     // 验证必填字段
@@ -86,7 +89,7 @@ export async function PUT(
     const { data, error } = await supabaseAdmin
       .from('cases')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -113,7 +116,7 @@ export async function PUT(
 // DELETE - 删除案例
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!supabaseAdmin) {
@@ -123,10 +126,12 @@ export async function DELETE(
       );
     }
 
+    const { id } = await params;
+
     const { error } = await supabaseAdmin
       .from('cases')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) throw error;
 

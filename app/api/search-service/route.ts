@@ -336,7 +336,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
   const results: SearchResult[] = [];
 
   // 提取搜索结果
-  $('.result').each((i: el) => {
+  $('.result').each((i: number, el: any) => {
     if (results.length >= max_results * 2) return false;
 
     const titleEl = $(el).find('h3 a');
@@ -395,7 +395,9 @@ async function searchWithLocalService(query: string, engine: string): Promise<Se
 
 export async function GET(request: NextRequest) {
   try {
-    const { q, engine = 'duckduckgo', max_results = 10 } = request.nextUrl.searchParams;
+    const q = request.nextUrl.searchParams.get('q');
+    const engine = request.nextUrl.searchParams.get('engine') || 'duckduckgo';
+    const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
       return NextResponse.json(
