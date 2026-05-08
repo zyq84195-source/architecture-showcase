@@ -452,18 +452,16 @@ export default function SmartSearchPage() {
               </div>
             </div>
 
-            {/* ========== 案例详情（对齐网站 16 字段 + 示意图片） ========== */}
-            <div className="space-y-8 mb-8">
-              {/* 案例标题 */}
+            {/* ========== 案例详情（16 个字段全部展示，无隐藏） ========== */}
+            <div className="space-y-6 mb-8">
+              {/* 案例标题 + 类型 */}
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">{caseExtraction.caseName}</h1>
-                {caseExtraction.caseType && (
-                  <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">{caseExtraction.caseType}</span>
-                )}
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">{caseExtraction.caseName || '未命名案例'}</h1>
+                <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">{caseExtraction.caseType || '未知类型'}</span>
               </div>
 
               {/* 示意图片 */}
-              {caseExtraction.caseImages && caseExtraction.caseImages.length > 0 && (
+              {caseExtraction.caseImages && caseExtraction.caseImages.length > 0 ? (
                 <div className="elegant-card p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {caseExtraction.caseImages.slice(0, 6).map((img: string, index: number) => (
@@ -473,76 +471,62 @@ export default function SmartSearchPage() {
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="elegant-card p-6 text-gray-400 text-sm">示意图片：无</div>
               )}
 
               {/* 1. 所在区位 */}
-              {caseExtraction.location && caseExtraction.location !== '生态城市' && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">📍 所在区位</h2>
-                  <p className="text-gray-700 leading-relaxed">{caseExtraction.location}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">📍 所在区位</h2>
+                <p className="text-gray-700 leading-relaxed">{caseExtraction.location || '无'}</p>
+              </div>
 
               {/* 2. 参与主体 */}
-              {caseExtraction.participants && caseExtraction.participants.length > 5 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">👥 参与主体</h2>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.participants}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">👥 参与主体</h2>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.participants || '无'}</p>
+              </div>
 
               {/* 3. 项目介绍 */}
-              {caseExtraction.projectIntroduction && caseExtraction.projectIntroduction.length > 10 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">📝 项目介绍</h2>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.projectIntroduction}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">📝 项目介绍</h2>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.projectIntroduction || '无'}</p>
+              </div>
 
               {/* 4. 项目规模 */}
-              {caseExtraction.projectScale && caseExtraction.projectScale.length > 3 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">📐 项目规模</h2>
-                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.projectScale}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">📐 项目规模</h2>
+                <p className="text-gray-700 whitespace-pre-line">{caseExtraction.projectScale || '无'}</p>
+              </div>
 
               {/* 5. 总投资额 */}
-              {caseExtraction.totalInvestment && caseExtraction.totalInvestment.length > 5 && !caseExtraction.totalInvestment.includes('未检索') && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">💰 总投资额</h2>
-                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.totalInvestment}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">💰 总投资额</h2>
+                <p className="text-gray-700 whitespace-pre-line">{caseExtraction.totalInvestment || '无'}</p>
+              </div>
 
               {/* 6. 起止时间 */}
-              {caseExtraction.startDate && caseExtraction.startDate.length > 3 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">📅 起止时间</h2>
-                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.startDate}{caseExtraction.endDate ? ` - ${caseExtraction.endDate}` : ''}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">📅 起止时间</h2>
+                <p className="text-gray-700 whitespace-pre-line">{caseExtraction.startDate || '无'}{caseExtraction.endDate ? ` - ${caseExtraction.endDate}` : ''}</p>
+              </div>
 
               {/* 7. 获奖情况 */}
-              {caseExtraction.awardStatus && caseExtraction.awardStatus.length > 5 && !caseExtraction.awardStatus.includes('未检索') && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏆 获奖情况</h2>
-                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.awardStatus}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🏆 获奖情况</h2>
+                <p className="text-gray-700 whitespace-pre-line">{caseExtraction.awardStatus || '无'}</p>
+              </div>
 
               {/* 8. 案例类型 */}
-              {caseExtraction.caseType && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏗 案例类型</h2>
-                  <p className="text-gray-700 whitespace-pre-line">{caseExtraction.caseType}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🏗 案例类型</h2>
+                <p className="text-gray-700 whitespace-pre-line">{caseExtraction.caseType || '无'}</p>
+              </div>
 
               {/* 9. 可持续目标 */}
-              {(caseExtraction.sustainabilityTargets || []).length > 0 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🌱 可持续目标</h2>
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🌱 可持续目标</h2>
+                {(caseExtraction.sustainabilityTargets || []).length > 0 ? (
                   <div className="flex flex-wrap gap-3">
                     {(caseExtraction.sustainabilityTargets || []).map((target, index) => (
                       <span key={index} className="inline-flex items-center gap-1 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium">
@@ -550,21 +534,21 @@ export default function SmartSearchPage() {
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-gray-700">无</p>
+                )}
+              </div>
 
               {/* 10. 示范意义 */}
-              {caseExtraction.demonstrationValue && caseExtraction.demonstrationValue.length > 10 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">💡 示范意义</h2>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.demonstrationValue}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">💡 示范意义</h2>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.demonstrationValue || '无'}</p>
+              </div>
 
               {/* 11. 建设阶段 */}
-              {(caseExtraction.constructionPhase || []).length > 0 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🔧 建设阶段</h2>
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🔧 建设阶段</h2>
+                {(caseExtraction.constructionPhase || []).length > 0 ? (
                   <div className="space-y-3">
                     {(caseExtraction.constructionPhase || []).map((phase, index) => (
                       <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
@@ -573,21 +557,21 @@ export default function SmartSearchPage() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-gray-700">无</p>
+                )}
+              </div>
 
               {/* 12. 项目获奖评价 */}
-              {caseExtraction.awardEvaluation && caseExtraction.awardEvaluation.length > 5 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🏅 项目获奖评价</h2>
-                  <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.awardEvaluation}</p>
-                </div>
-              )}
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🏅 项目获奖评价</h2>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{caseExtraction.awardEvaluation || '无'}</p>
+              </div>
 
               {/* 13. 项目举措 */}
-              {(caseExtraction.projectInitiatives || []).length > 0 && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🚀 项目举措</h2>
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🚀 项目举措</h2>
+                {(caseExtraction.projectInitiatives || []).length > 0 ? (
                   <div className="space-y-3">
                     {(caseExtraction.projectInitiatives || []).map((initiative, index) => (
                       <div key={index} className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg">
@@ -596,13 +580,15 @@ export default function SmartSearchPage() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-gray-700">无</p>
+                )}
+              </div>
 
               {/* 14. 信息来源 */}
-              {caseExtraction.infoSource && (
-                <div className="elegant-card p-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-3">🔗 信息来源</h2>
+              <div className="elegant-card p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">🔗 信息来源</h2>
+                {caseExtraction.infoSource ? (
                   <div className="space-y-1">
                     {caseExtraction.infoSource.split('\n').filter((url: string) => url.trim()).map((url: string, index: number) => (
                       <a key={index} href={url.trim()} target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:text-blue-700 hover:underline text-sm truncate">
@@ -610,8 +596,10 @@ export default function SmartSearchPage() {
                       </a>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-gray-700">无</p>
+                )}
+              </div>
 
               {/* 15. 数据质量 */}
               <div className="elegant-card p-6">
