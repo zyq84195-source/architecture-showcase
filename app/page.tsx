@@ -13,42 +13,42 @@ export default function HomePage() {
       {/* 优雅导航栏 */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
         <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-auto py-3 gap-4 flex-wrap">
             <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-elegant">
                 <span className="text-white font-bold text-lg">A</span>
               </div>
               <h1 className="text-xl font-bold text-gray-900">Architecture Showcase</h1>
             </Link>
-            <div className="hidden md:flex items-center space-x-1">
+            <div className="flex items-center space-x-1 flex-wrap gap-y-2">
               <Link href="/cases">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
                   案例
                 </Button>
               </Link>
               <Link href="/search">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
                   搜索
                 </Button>
               </Link>
               <Link href="/smart-search">
-                <Button className="bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-elegant">
+                <Button className="bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-elegant text-sm">
                   🤖 智能搜索
                 </Button>
               </Link>
               <Link href="/admin/cases">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
                   管理
                 </Button>
               </Link>
-              <div className="w-px h-6 bg-gray-200 mx-2"></div>
+              <div className="w-px h-6 bg-gray-200 mx-1"></div>
               <Link href="/auth/register">
-                <Button className="btn-primary-elegant">
+                <Button className="btn-primary-elegant text-sm">
                   注册
                 </Button>
               </Link>
               <Link href="/auth/login">
-                <Button variant="outline" className="btn-secondary-elegant">
+                <Button variant="outline" className="btn-secondary-elegant text-sm">
                   登录
                 </Button>
               </Link>
