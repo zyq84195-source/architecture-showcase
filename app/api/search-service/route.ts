@@ -227,44 +227,59 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
   console.log(`[Tavily] Raw results: ${data.results?.length}`);
 
   return (data.results || []).map((item: any) => {
-    // Tavily 的 content 包含全文，提取有意义的摘要
     const rawContent = item.content || '';
-    let snippet = rawContent;
 
-    // 策略 1：如果 Tavily 有单独的 snippet/description 字段，优先用
-    if (item.snippet && item.snippet.length > 20) {
-      snippet = item.snippet;
-    }
+    // ── 清理 snippet 的核心逻辑 ──
+    let snippet = '';
 
-    // 策略 2：跳过网站导航文本，找到第一段有意义的正文
+    // 第一步：按行拆分，逐行过滤噪音
     const lines = rawContent.split(/[\n\r]+/);
     const meaningfulLines: string[] = [];
     for (const line of lines) {
-      const trimmed = line.trim();
-      // 跳过太短的行（导航菜单）、表格分隔线、Markdown 标记
-      if (trimmed.length < 10) continue;
-      if (/^[|\-#*=\d\.]+$/.test(trimmed)) continue;
-      // 跳过常见网站导航文本模式
-      if (/^(首页|导航|菜单|登录|注册|搜索|下载|上传|分享)/.test(trimmed)) continue;
-      if (/^(省人大|省政府|省政协|党务|市县|工作动态)/.test(trimmed)) continue;
+      let trimmed = line
+        .replace(/^#{1,6}\s*/, '')   // 去掉 Markdown 标题 #
+        .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1') // 去掉加粗
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // 链接只保留文字
+        .trim();
+
+      // 跳过太短的行
+      if (trimmed.length < 15) continue;
+      // 跳过纯符号行
+      if (/^[|\-#*=\d\.\s>]+$/.test(trimmed)) continue;
+      // 跳过面包屑导航（用 > 分隔的短词）
+      if (/^[\u4e00-\u9fa5]{2,4}\s*>\s*[\u4e00-\u9fa5]{2,4}/.test(trimmed) && trimmed.length < 40) continue;
+      // 跳过网站导航
+      if (/^(首页|导航|菜单|登录|注册|搜索|下载|上传|分享|政务|信息公开)/.test(trimmed)) continue;
+      // 跳过政府网站导航栏
+      if (/^(省人大|省政府|省政协|党务要闻|市县传真|工作动态|受权发布|书记信箱)/.test(trimmed)) continue;
+      // 跳过来源标记
+      if (/^(来源：|来源:|作者：|作者:|责任编辑)/.test(trimmed)) continue;
+      // 跳过日期行
+      if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(trimmed) && trimmed.length < 25) continue;
+      // 跳过页脚
+      if (/^(版权所有|Copyright|ICP|备案号|技术支持)/.test(trimmed)) continue;
+
       meaningfulLines.push(trimmed);
-      if (meaningfulLines.length >= 3) break;
+      if (meaningfulLines.length >= 2) break;
     }
 
     if (meaningfulLines.length > 0) {
       snippet = meaningfulLines.join(' ');
+    } else {
+      // 回退：用 content 前面部分
+      snippet = rawContent.substring(0, 200);
     }
 
-    // 最终清理
+    // 第二步：全局清理
     snippet = snippet
-      .replace(/\|/g, ' ')
-      .replace(/---+/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/\|/g, ' ')          // 去掉表格分隔符
+      .replace(/---+/g, ' ')        // 去掉 Markdown 分隔线
+      .replace(/\s+/g, ' ')         // 合并空白
       .trim()
       .substring(0, 200);
 
     return {
-      title: item.title || '未命名',
+      title: (item.title || '未命名').replace(/^#+\s*/, ''),
       url: item.url,
       snippet,
       content: rawContent,

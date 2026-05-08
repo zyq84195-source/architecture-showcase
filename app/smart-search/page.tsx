@@ -114,7 +114,7 @@ interface CompareResponse {
 export default function SmartSearchPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [max_results, setMaxResults] = useState(3)
-  const [searchEngine, setSearchEngine] = useState('bing') // baidu 或 bing
+  const [searchEngine, setSearchEngine] = useState('tavily') // tavily、baidu 或 bing
   
   const [isSearching, setIsSearching] = useState(false)
   const [isComparing, setIsComparing] = useState(false)

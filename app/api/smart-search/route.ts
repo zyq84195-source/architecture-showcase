@@ -638,7 +638,7 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
       include_raw_content: true,
       include_images: true,
       include_domains: [],
-      exclude_domains: [],
+      exclude_domains: ['zhihu.com', 'baike.baidu.com', 'douyin.com', 'scribd.com', 'tieba.baidu.com', 'wenku.baidu.com', 'toutiao.com'],
     }),
   });
 
@@ -1077,17 +1077,24 @@ export async function POST(request: NextRequest) {
       console.log(`[Smart Search] Optimized query: "${q}" → "${optimizedQuery}"`);
     }
 
-    // 调用本地 Web 搜索 API（使用优化后的搜索词）
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-    const webSearchUrl = `${baseUrl}/api/web-search`;
-    const searchResponse = await fetch(`${webSearchUrl}?q=${encodeURIComponent(optimizedQuery)}&engine=${engine}`);
+    // 优先使用 Tavily（质量最高），回退到 web-search
+    let rawSearchResults = [];
 
-    if (!searchResponse.ok) {
-      throw new Error(`Local search service error: ${searchService.status}`);
+    try {
+      console.log('[Smart Search] Step 1: Searching with Tavily...');
+      rawSearchResults = await searchWithTavily(optimizedQuery, max_results);
+      console.log(`[Smart Search] Tavily returned ${rawSearchResults.length} results`);
+    } catch (tavilyError) {
+      console.warn('[Smart Search] Tavily failed, falling back to web-search:', tavilyError.message);
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      const webSearchUrl = `${baseUrl}/api/web-search`;
+      const searchResponse = await fetch(`${webSearchUrl}?q=${encodeURIComponent(optimizedQuery)}&engine=${engine}`);
+      if (!searchResponse.ok) {
+        throw new Error(`Search service error: ${searchResponse.status}`);
+      }
+      const searchData = await searchResponse.json();
+      rawSearchResults = searchData.data || [];
     }
-
-    const searchData = await searchResponse.json();
-    const rawSearchResults = searchData.data || [];
     console.log(`[Smart Search] Found ${rawSearchResults.length} raw search results`);
 
     if (rawSearchResults.length === 0) {
