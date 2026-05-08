@@ -1,11 +1,12 @@
 // @ts-nocheck
 /**
- * 智能搜索 API（精细提取版 - 解决所有11个问题）
+ * 智能搜索 API（全字段 AI 提取版）
  *
  * 核心策略：
- * 1. 精细正则提取（强制精确匹配）
- * 2. AI 辅助提取（深度分析）
- * 3. 多维度验证（确保完整性）
+ * 1. Tavily 搜索 + 多轮补充搜索
+ * 2. 页面爬取获取真实内容
+ * 3. AI 逐字段提取，严格基于原文
+ * 4. 质量检查 + 补充搜索循环
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -98,435 +99,7 @@ async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<
   return report;
 }
 
-/**
- * 1. 精细提取所在区位（省-市-区县）
- */
-function extractLocation(content: string): string {
-  // 优先匹配完整格式：天津市滨海新区
-  const districtPattern = /([津]市\s*[市辖区省]?\s*(?:滨海新区|生态城|经济技术开发区|高新区|新区)|(?:滨海新区|生态城|经济技术开发区|高新区|新区)\s*[市辖区省]?[市县区])/g;
-  const districtMatch = content.match(districtPattern);
-
-  if (districtMatch && districtMatch[0]) {
-    return districtMatch[0].trim();
-  }
-
-  // 其次匹配"天津市..."
-  const cityPattern = /([^，、。]{2,20})(市|省)([^，、。]{2,20}区|[^，、。]{2,20}县)/g;
-  const cityMatch = content.match(cityPattern);
-
-  if (cityMatch && cityMatch[0]) {
-    return cityMatch[0].trim();
-  }
-
-  return '天津市滨海新区（默认区域）';
-}
-
-/**
- * 2. 精细提取总投资额
- */
-function extractInvestment(content: string): string {
-  // 模式1：总投资额格式
-  const pattern1 = /总投资\s*[：约]*\s*(\d+(?:\.\d+)?)[\s]*(亿元|万元|万|亿)[\s]*人民币/gi;
-  const match1 = content.match(pattern1);
-  if (match1 && match1[0]) {
-    return match1[1] + ' ' + match1[2] + '人民币';
-  }
-
-  // 模式2：投资格式
-  const pattern2 = /投资\s*[：约]*\s*(\d+(?:\.\d+)?)[\s]*(亿元|万元|万|亿)[\s]*人民币/gi;
-  const match2 = content.match(pattern2);
-  if (match2 && match2[0]) {
-    return match2[1] + ' ' + match2[2] + '人民币';
-  }
-
-  // 模式3：最宽松匹配
-  const pattern3 = /(\d+(?:\.\d+)?)[\s]*(亿元|万元|万|亿)[\s]*人民币/gi;
-  const match3 = content.match(pattern3);
-  if (match3 && match3[0]) {
-    return match3[1] + ' ' + match3[2] + '人民币';
-  }
-
-  return '未检索到投资信息';
-}
-
-/**
- * 3. 精细提取起止时间（包含编制时间、上位规划时间）
- */
-function extractStartDate(content: string): string {
-  // 查找所有年份
-  const yearMatches = content.match(/(\d{4})[年]/g);
-  if (!yearMatches || yearMatches.length === 0) {
-    return '未检索到时间信息';
-  }
-
-  const years = yearMatches.map(m => parseInt(m));
-
-  // 如果有多个年份，找到最早和最晚
-  const minYear = Math.min(...years);
-  const maxYear = Math.max(...years);
-
-  // 查找"编制"、"规划"等关键词
-  const 编制匹配 = content.match(/(\d{4})[年]([月\\s]+?编制)/);
-  const 规划匹配 = content.match(/(\d{4})[年]([月\\s]+?规划)/);
-
-  if (编制匹配 && 规划匹配) {
-    return `${编制匹配[1]}-${编制匹配[2]}`;
-  }
-
-  if (规划匹配) {
-    return `${规划匹配[1]}-${规划匹配[2]}`;
-  }
-
-  // 查找上位规划时间
-  const 上位规划匹配 = content.match(/(\d{4})[年]([月\\s]+?上位规划|上位规划[月\\s]+?(\d{4}))/);
-  if (上位规划匹配) {
-    if (上位规划匹配[3]) {
-      return `${上位规划匹配[1]}${上位规划匹配[2]}至${上位规划匹配[3]}`;
-    }
-    return `${上位规划匹配[1]}${上位规划匹配[2]}`;
-  }
-
-  return `${minYear}年-${maxYear}年`;
-}
-
-/**
- * 4. 精细提取参与主体（委托方、建设方、规划设计方、编制单位等）
- */
-function extractParticipants(content: string): string {
-  // 提取各类单位
-  const entities = new Set<string>();
-
-  // 委托方（政府部门）
-  const clientPatterns = [
-    /委托\s*([^，、。]{4,40}市人民政府|人民政府|住房和城乡建设委员会|住房和城乡建设局|规划建设局|自然资源和规划局)/g,
-    /委托\s*([^，、。]{4,40}局|委员会|办公厅|办公室)/g,
-  ];
-
-  // 编制单位模式
-  const 编制单位模式 = [
-    /编制\s*([^，、。]{4,40}规划设计院|建筑研究院|设计研究院|设计有限公司|设计有限公司)/g,
-  ];
-
-  // 建设方
-  const builderPatterns = [
-    /建设\s*([^，、。]{4,40}集团有限公司|有限公司|工程局|建筑公司)/g,
-    /建设单位\s*([^，、。]{4,40}集团有限公司|有限公司|工程局|建筑公司)/g,
-  ];
-
-  // 规划设计方
-  const designPatterns = [
-    /设计\s*([^，、。]{4,40}规划设计院|建筑研究院|设计研究院|设计有限公司|设计有限公司)/g,
-    /规划设计\s*([^，、。]{4,40}规划设计院|建筑研究院|设计研究院)/g,
-  ];
-
-  // 遍历所有模式
-  const allPatterns = [...clientPatterns, ...编制单位模式, ...builderPatterns, ...designPatterns];
-
-  for (const pattern of allPatterns) {
-    const matches = content.match(pattern);
-    if (matches && matches[1]) {
-      entities.add(matches[1].trim());
-    }
-  }
-
-  // 查找包含"设计"、"规划"、"研究院"、"院"的词
-  const 研究院模式 = /([^，、。\s]{4,30}(?:设计|规划|研究院|院))/g;
-  const 研究院匹配 = content.match(研究院模式);
-  if (研究院匹配) {
-    for (const match of 研究院匹配) {
-      if (match.length >= 5 && match.length <= 30) {
-        entities.add(match);
-      }
-    }
-  }
-
-  const entityArray = Array.from(entities);
-
-  if (entityArray.length >= 4) {
-    return entityArray.slice(0, 8).join('、');
-  }
-
-  if (entityArray.length > 0) {
-    return entityArray.join('、');
-  }
-
-  return '未检索到参与单位信息';
-}
-
-/**
- * 5. 精细提取获奖情况
- */
-function extractAwardStatus(content: string): string {
-  // 模式1：获得...奖
-  const pattern1 = /获得\s*([^，、。]{4,60}奖)/g;
-  const matches1 = content.match(pattern1);
-
-  if (matches1 && matches1.length > 0) {
-    return matches1[0].trim();
-  }
-
-  // 模式2：荣获...奖
-  const pattern2 = /荣获\s*([^，、。]{4,60}奖)/g;
-  const matches2 = content.match(pattern2);
-
-  if (matches2 && matches2.length > 0) {
-    return matches2[0].trim();
-  }
-
-  return '未检索到获奖信息';
-}
-
-/**
- * 6. 精细提取案例类型（规划类型 + 建设实施状态）
- */
-function extractCaseType(content: string): string {
-  // 规划类型关键词
-  const 规划类型 = ['城市更新规划', '乡村设计规划', '生态城市规划', '城市总体规划', '详细规划', '控制性详细规划', '修建性详细规划', '专项规划', '概念规划'];
-
-  // 建设状态关键词
-  const 建设状态 = ['持续实施中', '持续建设中', '已建成并持续运营', '已建成', '在建', '规划阶段', '方案报批', '施工建设', '竣工验收'];
-
-  for (const keyword of 规划类型) {
-    if (content.includes(keyword)) {
-      for (const state of 建设状态) {
-        if (content.includes(state)) {
-          return `${keyword}（${state}）`;
-        }
-      }
-      return `${keyword}（规划阶段）`;
-    }
-  }
-
-  return '生态城市规划';
-}
-
-/**
- * 7. AI 辅助提取示范意义（3个关键词 + 创新解释）
- */
-async function extractDemonstrationValue(content: string): Promise<string> {
-  const prompt = `
-从以下内容中提取项目的示范意义和创新点。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的信息
-- 如果原文中没有，返回空字符串
-- 绝不编造
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"demonstration_keywords": ["string"], "demonstration_explanation": "string"}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 1000);
-    const keywords = result.demonstration_keywords || [];
-    const explanation = result.demonstration_explanation || content.substring(0, 800);
-
-    // 构建完整的示范意义文本
-    let demoValue = '';
-    if (keywords.length > 0) {
-      demoValue += '关键词：' + keywords.join('、') + '\n\n';
-    }
-
-    if (explanation) {
-      demoValue += '创新点：\n' + explanation;
-    }
-
-    return demoValue || '未检索到示范意义信息';
-  } catch (error) {
-    console.error('[Extract Demonstration Value] Error:', error);
-    return '未检索到示范意义信息';
-  }
-}
-
-/**
- * 8. AI 辅助提取项目介绍（≥300字）
- */
-async function extractProjectIntroduction(content: string): Promise<string> {
-  const prompt = `
-从以下内容中提取项目背景和介绍信息。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的信息，绝不编造
-- 如果原文中没有项目介绍信息，返回空字符串
-- 最多500字
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"projectIntroduction": "string"}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 2000);
-    return result.projectIntroduction || content.substring(0, 2000);
-  } catch (error) {
-    console.error('[Extract Project Introduction] Error:', error);
-    return content.substring(0, 500);
-  }
-}
-
-/**
- * 9. AI 辅助提取建设阶段（≥450字）
- */
-async function extractConstructionPhase(content: string): Promise<string[]> {
-  const prompt = `
-从以下内容中提取项目建设阶段信息。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的时间节点和建设内容
-- 格式："阶段名称（时间段）：具体内容"
-- 如果原文中没有建设阶段信息，返回空数组
-- 绝不编造时间、内容
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"constructionPhase": ["string"]}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 2000);
-    return result.constructionPhase || [];
-  } catch (error) {
-    console.error('[Extract Construction Phase] Error:', error);
-    return [];
-  }
-}
-
-/**
- * 10. AI 辅助提取项目举措（≥700字）
- */
-async function extractProjectInitiatives(content: string): Promise<string[]> {
-  const prompt = `
-从以下内容中提取项目举措和实施措施。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的举措
-- 如果原文中没有相关信息，返回空数组
-- 绝不编造
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"projectInitiatives": ["string"]}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 2000);
-  } catch (error) {
-    console.error('[Extract Project Initiatives] Error:', error);
-    return [];
-  }
-}
-
-/**
- * AI 提取项目规模
- */
-async function extractProjectScale(content: string): Promise<string> {
-  const prompt = `
-从以下内容中提取项目规模信息。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的规模信息（面积、栋数、投资额等）
-- 如果原文中没有，返回空字符串
-- 绝不编造
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"projectScale": "string"}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 300);
-    return result.projectScale || '';
-  } catch (error) {
-    console.error('[Extract Project Scale] Error:', error);
-    return '';
-  }
-}
-
-/**
- * 11. AI 辅助提取项目获奖评价
- */
-async function extractAwardEvaluation(content: string): Promise<string> {
-  const prompt = `
-从以下内容中提取获奖评价信息。
-
-## 严格要求
-- 用中文回答
-- 只提取原文中真实存在的获奖信息
-- 如果没有获奖信息，返回空字符串
-- 绝不编造
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"awardEvaluation": "string"}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 400);
-  } catch (error) {
-    console.error('[Extract Award Evaluation] Error:', error);
-    return '';
-  }
-}
-
-/**
- * 12. 提取可持续目标（从6个目标中选择，不强行符合）
- */
-async function extractSustainabilityTargets(content: string): Promise<string[]> {
-  const prompt = `
-从以下内容中提取项目的可持续目标。
-
-## 严格要求
-- 用中文回答
-- 只能从以下6个目标中选择：宜居、智慧、人文、创新、绿色、韧性
-- 只返回项目实际体现的目标，不强行匹配
-- 如果无法判断，返回空数组
-
-内容：${content.substring(0, 3000)}
-
-只返回合法 JSON：
-{"sustainabilityTargets": ["string"]}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 500);
-    return result.sustainabilityTargets || [];
-  } catch (error) {
-    console.error('[Extract Sustainability Targets] Error:', error);
-    return [];
-  }
-}
-
-/**
- * 提取图片
- */
-function extractImages(content: string): string[] {
-  const imagePatterns = [
-    /https?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
-    /http?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
-  ];
-
-  const foundImages: string[] = [];
-  for (const pattern of imagePatterns) {
-    const matches = content.match(pattern);
-    if (matches) {
-      foundImages.push(...matches.slice(0, 10));
-    }
-  }
-
-  return foundImages;
-}
+// ==================== 搜索和爬取函数 ====================
 
 async function searchWithTavily(query: string, max_results: number): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
@@ -574,68 +147,6 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
   }));
 }
 
-/**
- * 使用 DuckDuckGo 进行搜索（免费，无需 API Key）
- */
-async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
-  try {
-    console.log('[DuckDuckGo] Starting search...');
-
-    // 使用 DuckDuckGo Instant Answer API
-    const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=0`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`DuckDuckGo API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('[DuckDuckGo] Search results count:', data.RelatedTopics?.length || 0);
-
-    const results: SearchResult[] = [];
-
-    // 提取搜索结果
-    if (data.RelatedTopics) {
-      for (const topic of data.RelatedTopics) {
-        if (topic.FirstURL && topic.Text && topic.Text !== '' && results.length < max_results * 2) {
-          results.push({
-            title: topic.Text.substring(0, 80),
-            url: topic.FirstURL,
-            snippet: topic.Text.substring(0, 200),
-            content: topic.Text,
-            source: 'duckduckgo',
-            score: 0,
-          });
-        }
-      }
-    }
-
-    // 如果 RelatedTopics 为空，尝试使用 AbstractText
-    if (results.length === 0 && data.AbstractURL && data.AbstractText) {
-      results.push({
-        title: data.Heading || 'Abstract',
-        url: data.AbstractURL,
-        snippet: data.AbstractText.substring(0, 200),
-        content: data.AbstractText,
-        source: 'duckduckgo',
-        score: 0,
-      });
-    }
-
-    return results;
-  } catch (error: any) {
-    console.error('[DuckDuckGo Search Error]', error.message);
-    throw new Error(`DuckDuckGo 搜索失败: ${error.message}`);
-  }
-}
-
-/**
- * 爬取网页内容
- */
 async function fetchPageContent(url: string): Promise<string> {
   try {
     console.log(`[Fetch Page Content] Fetching: ${url}`);
@@ -646,7 +157,7 @@ async function fetchPageContent(url: string): Promise<string> {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       },
-      signal: AbortSignal.timeout(10000), // 10 秒超时
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
@@ -656,7 +167,6 @@ async function fetchPageContent(url: string): Promise<string> {
     const html = await response.text();
     console.log(`[Fetch Page Content] Fetched ${html.length} characters`);
 
-    // 简单的文本提取（提取 <body> 中的文本）
     const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     if (bodyMatch) {
       const bodyText = bodyMatch[1]
@@ -676,7 +186,6 @@ async function fetchPageContent(url: string): Promise<string> {
         .replace(/\s+/g, ' ')
         .trim();
 
-      // 跳过网站导航文本，只保留正文内容
       const lines = bodyText.split(/[.。!?！？\n]/);
       const meaningfulLines: string[] = [];
       for (const line of lines) {
@@ -698,13 +207,9 @@ async function fetchPageContent(url: string): Promise<string> {
   }
 }
 
-/**
- * 批量爬取多个网页的内容
- */
 async function fetchMultiplePages(urls: string[]): Promise<Map<string, string>> {
   const contentMap = new Map<string, string>();
 
-  // 并发爬取（最多 5 个并发）
   const batchSize = 5;
   for (let i = 0; i < urls.length; i += batchSize) {
     const batch = urls.slice(i, i + batchSize);
@@ -724,8 +229,7 @@ async function fetchMultiplePages(urls: string[]): Promise<Map<string, string>> 
 }
 
 function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { relevance_score: number; relevance_reason: string } {
-  // 检查是否是低质量结果
-  if (searchResult.url.includes('baidu.com/link') || 
+  if (searchResult.url.includes('baidu.com/link') ||
       searchResult.url.includes('bing.com/search') ||
       searchResult.url.includes('sogou.com/link')) {
     return { relevance_score: 0, relevance_reason: '通用链接页，已过滤' };
@@ -737,26 +241,22 @@ function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { r
   const url = searchResult.url.toLowerCase();
   const combined = `${title} ${snippet}`;
 
-  let score = 40; // 基础分（提高基础分，确保有基本评分）
+  let score = 40;
   let reasons: string[] = [];
 
-  // 关键词匹配加分
   for (const term of queryTerms) {
     const termLower = term.toLowerCase();
     if (title.includes(termLower)) { score += 20; reasons.push(`标题匹配"${term}"`); }
     else if (snippet.includes(termLower)) { score += 10; reasons.push(`摘要匹配"${term}"`); }
   }
 
-  // 高质量域名加分
   const highQualityPatterns = ['gov.cn', 'edu.cn', 'archdaily', 'gooood', 'archidogs', 'archina', 'mohurd', 'people.com', 'xinhuanet', 'lifeweek', 'souhu.com/a/', 'thepaper'];
   for (const pattern of highQualityPatterns) {
     if (url.includes(pattern)) { score += 10; reasons.push('高质量来源'); break; }
   }
 
-  // PDF/文档类降分（通常内容难以提取）
   if (title.includes('[PDF]') || title.includes('[DOC]')) { score -= 10; }
 
-  // Tavily 自带分数加权
   if (searchResult.score && searchResult.score > 0) {
     score = Math.round(score * 0.6 + searchResult.score * 0.4);
   }
@@ -769,160 +269,394 @@ function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { r
   };
 }
 
+// ==================== 质量检查函数 ====================
 
-async function filterAndRankResults(query: string, searchResults: SearchResult[], max_results: number): Promise<SearchResult[]> {
-  console.log(`[Relevance Filtering] Evaluating ${searchResults.length} results...`);
-
-  const resultsWithRelevance = searchResults.map((result) => {
-    const evaluation = evaluateRelevanceSimple(query, result);
-    return {
-      ...result,
-      relevance_score: evaluation.relevance_score,
-      relevance_reason: evaluation.relevance_reason
-    };
-  });
-
-  // 放宽过滤：保留相关性分数 >= 20 的结果（降低阈值以提高通过率）
-  const filteredResults = resultsWithRelevance.filter(result => result.relevance_score >= 20);
-  console.log(`[Relevance Filtering] Filtered to ${filteredResults.length} results (score >= 20)`);
-
-  // 排序
-  const sortedResults = filteredResults
-    .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
-
-  // 只返回前 max_results 个结果
-  const topResults = sortedResults.slice(0, max_results);
-
-  console.log(`[Relevance Filtering] Selected top ${topResults.length} results`);
-  topResults.forEach((result, index) => {
-    console.log(`  ${index + 1}. Score: ${result.relevance_score}, Title: ${result.title.substring(0, 50)}...`);
-  });
-
-  return topResults;
+interface QualityReport {
+  field: string;
+  passed: boolean;
+  reason: string;
 }
 
-async function extractAllInformation(content: string, title: string, url: string): Promise<CaseExtraction> {
-  console.log('[Master Extraction] Starting extraction for:', title);
+function checkFieldQuality(extraction: CaseExtraction): QualityReport[] {
+  const checks: QualityReport[] = [];
 
-  // 清理 HTML 实体，防止污染提取结果
-  const cleanContent = content
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/&[a-zA-Z]+;/g, ' '); // 其余 HTML 实体
+  // 字数检查
+  if ((extraction.projectIntroduction || '').length < 300) {
+    checks.push({ field: 'projectIntroduction', passed: false, reason: `项目介绍仅${(extraction.projectIntroduction || '').length}字，要求≥300字` });
+  }
 
-  const result = {
-    caseName: title,
-    location: extractLocation(cleanContent),
-    projectScale: '',
-    totalInvestment: extractInvestment(cleanContent),
-    participants: extractParticipants(cleanContent),
-    startDate: extractStartDate(cleanContent),
-    endDate: '',
-    awardStatus: extractAwardStatus(cleanContent),
-    caseType: extractCaseType(cleanContent),
-    sustainabilityTargets: [],
-    demonstrationValue: '',
-    projectIntroduction: '',
-    constructionPhase: [],
-    awardEvaluation: '',
-    projectInitiatives: [],
-    infoSource: url,
-    caseImages: extractImages(cleanContent),
-    extractionSource: '精细提取版（正则匹配 + AI 辅助）',
-    dataQuality: '待评估'
+  const constructionText = (extraction.constructionPhase || []).join('');
+  if (constructionText.length < 450) {
+    checks.push({ field: 'constructionPhase', passed: false, reason: `建设阶段仅${constructionText.length}字，要求≥450字` });
+  }
+
+  const initiativesText = (extraction.projectInitiatives || []).join('');
+  if (initiativesText.length < 700) {
+    checks.push({ field: 'projectInitiatives', passed: false, reason: `项目举措仅${initiativesText.length}字，要求≥700字` });
+  }
+
+  // 格式检查
+  if (extraction.location && !extraction.location.includes('-') && !extraction.location.includes('省') && !extraction.location.includes('市')) {
+    checks.push({ field: 'location', passed: false, reason: '所在区位格式应为"省-市-区县"' });
+  }
+
+  // 空值检查
+  const requiredFields = ['location', 'projectScale', 'participants', 'startDate', 'caseType', 'demonstrationValue', 'projectIntroduction'];
+  for (const field of requiredFields) {
+    const value = extraction[field];
+    if (!value || (typeof value === 'string' && value.length < 5)) {
+      checks.push({ field, passed: false, reason: `${field}为空或过短` });
+    }
+  }
+
+  return checks;
+}
+
+// ==================== 单字段 AI 提取函数 ====================
+
+async function extractField(field: string, content: string, requirements: string, maxTokens: number = 1000): Promise<any> {
+  const prompt = `你是一名建筑案例信息提取专家。严格从以下网页内容中提取"${field}"字段的信息。
+
+## 字段要求
+${requirements}
+
+## 严格要求
+- 只提取原文中真实存在的信息
+- 用中文回答
+- 不编造任何事实、数据或人名
+- 如果原文中没有相关信息，返回"经多轮检索未找到${field}信息"
+- 返回合法JSON
+
+## 网页内容
+${content.substring(0, 4000)}
+
+返回合法JSON：{"${field}": "提取结果"}`;
+
+  try {
+    const result = await callQwenModel(prompt, maxTokens);
+    return result[field];
+  } catch (error: any) {
+    console.error(`[Extract Field] Error for ${field}:`, error.message);
+    return `经多轮检索未找到${field}信息`;
+  }
+}
+
+// ==================== 补充搜索函数 ====================
+
+async function supplementarySearch(
+  baseQuery: string,
+  field: string,
+  searchFn: (query: string) => Promise<SearchResult[]>
+): Promise<string> {
+  const fieldQueries: Record<string, string> = {
+    'projectIntroduction': `${baseQuery} 项目背景 简介`,
+    'constructionPhase': `${baseQuery} 建设历程 实施阶段`,
+    'projectInitiatives': `${baseQuery} 技术措施 创新做法`,
+    'participants': `${baseQuery} 设计单位 编制单位 委托方`,
+    'totalInvestment': `${baseQuery} 投资金额 造价`,
+    'startDate': `${baseQuery} 开工时间 竣工 编制时间`,
+    'awardStatus': `${baseQuery} 获奖 评价`,
+    'demonstrationValue': `${baseQuery} 示范意义 创新点`,
+    'projectScale': `${baseQuery} 项目规模 面积`,
   };
 
-  // 并行提取（减少时间）
-  try {
-    const [demoValue, intro, awardEval, sustainability] = await Promise.all([
-      extractDemonstrationValue(cleanContent),
-      extractProjectIntroduction(cleanContent),
-      extractAwardEvaluation(cleanContent),
-      extractSustainabilityTargets(cleanContent)
-    ]);
-    
-    result.demonstrationValue = demoValue;
-    result.projectIntroduction = intro;
-    result.awardEvaluation = awardEval;
-    result.sustainabilityTargets = sustainability;
-    
-    console.log('[Master Extraction] Basic extraction completed');
-  } catch (error) {
-    console.error('[Master Extraction] Basic extraction error:', error);
-  }
+  const query = fieldQueries[field] || `${baseQuery} ${field}`;
+  console.log(`[Supplementary Search] Searching for field "${field}": ${query}`);
 
-  // 串行提取（减少时间）
   try {
-    const phases = await extractConstructionPhase(cleanContent);
-    const initiatives = await extractProjectInitiatives(cleanContent);
-    const scale = await extractProjectScale(cleanContent);
-    
-    result.constructionPhase = phases;
-    result.projectInitiatives = initiatives;
-    if (!result.projectScale && scale) result.projectScale = scale;
-    
-    console.log('[Master Extraction] Complex extraction completed');
-  } catch (error) {
-    console.error('[Master Extraction] Complex extraction error:', error);
-  }
+    const results = await searchFn(query);
+    if (results.length === 0) return '';
 
-  // 矛盾检测：起止时间 vs 建设阶段
-  try {
-    const currentYear = new Date().getFullYear();
-    const endYearMatch = result.startDate.match(/(\d{4})/);
-    
-    if (endYearMatch) {
-      const endYear = parseInt(endYearMatch[1]);
-      
-      // 检查建设阶段是否包含"至今"、"持续"、"进行中"等词
-      const phaseText = result.constructionPhase.join(' ');
-      const ongoingKeywords = ['至今', '持续', '进行中', '在建', '建设中', '运营中', '实施中'];
-      const hasOngoingKeyword = ongoingKeywords.some(keyword => phaseText.includes(keyword));
-      
-      // 如果结束年份 < 当前年份，但建设阶段包含"至今"等词，则有矛盾
-      if (endYear < currentYear && hasOngoingKeyword) {
-        console.warn('[Contradiction Detection] Found contradiction:');
-        console.warn(`  End year: ${endYear}, Current year: ${currentYear}`);
-        console.warn(`  Phase text contains ongoing keyword: ${phaseText.substring(0, 100)}...`);
-        
-        // 在示范意义中添加矛盾说明
-        result.demonstrationValue = `⚠️ 时间矛盾：项目起止时间显示截至${endYear}年，但建设阶段描述包含"持续/进行中/至今"等词汇，可能与当前时间（${currentYear}年）不符。\n\n${result.demonstrationValue}`;
+    const urls = results.slice(0, 3).map(r => r.url);
+    const contentMap = await fetchMultiplePages(urls);
+    const additionalContent = Array.from(contentMap.values())
+      .filter(c => c.length > 100)
+      .join('\n\n');
+
+    console.log(`[Supplementary Search] Got ${additionalContent.length} chars for field "${field}"`);
+    return additionalContent;
+  } catch (error: any) {
+    console.error(`[Supplementary Search] Error for field "${field}":`, error.message);
+    return '';
+  }
+}
+
+// ==================== 核心提取函数 ====================
+
+async function extractAllFields(
+  content: string,
+  title: string,
+  urls: string[],
+  searchFn: (query: string) => Promise<SearchResult[]>
+): Promise<CaseExtraction> {
+  console.log('[Extract All Fields] Starting extraction for:', title);
+
+  const MAX_ROUNDS = 2;
+  let supplementaryContent = '';
+
+  // 辅助函数：构建 infoSource 字符串
+  const buildInfoSource = (urlList: string[]): string => {
+    return urlList.slice(0, 5).map(url => {
+      // 尝试提取域名作为来源名
+      try {
+        const hostname = new URL(url).hostname;
+        return `${hostname}\n${url}`;
+      } catch {
+        return url;
+      }
+    }).join('\n\n');
+  };
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    console.log(`[Extract All Fields] Round ${round + 1}/${MAX_ROUNDS}`);
+
+    const currentContent = round === 0 ? content : content + '\n\n' + supplementaryContent;
+
+    // ====== 第一轮：逐字段提取 ======
+
+    // 1. caseName（案例名称）
+    const caseName = await extractField('caseName', currentContent,
+      '从搜索结果中提取正式项目名称。去掉PDF、DOC等前缀。返回项目全称。', 300);
+
+    // 2. location（所在区位）
+    const location = await extractField('location', currentContent,
+      '格式为"XX省-XX市-XX区县"。如果只能找到省市，就写"XX省-XX市"。如果找不到具体区县，根据内容推断。必须包含"-"分隔符。', 300);
+
+    // 3. projectScale（项目规模）
+    const projectScale = await extractField('projectScale', currentContent,
+      '如果是规划类：说明用地面积+规划等级。如果是导则/条例：说明适用范围/针对对象。示例："用地面积约4.69公顷，属于市级历史文化街区保护规划"', 300);
+
+    // 4. totalInvestment（总投资额）
+    const totalInvestment = await extractField('totalInvestment', currentContent,
+      '提取具体投资金额，如"总投资约15亿元人民币"。找不到就写"经多轮检索未找到投资信息"', 300);
+
+    // 5. participants（参与主体）
+    const participants = await extractField('participants', currentContent,
+      '分别列出：委托方、建设方、规划设计方、编制单位。编制单位要写全称，所有参与单位都要列出。格式示例："委托方：南京市秦淮区人民政府；规划设计方：东南大学建筑设计研究院；编制单位：XX规划设计院"。找不到就写"经多轮检索未找到参与单位信息"', 800);
+
+    // 6. startDate（起止时间）
+    const startDate = await extractField('startDate', currentContent,
+      '格式："XXXX年-X月 起至 XXXX年-X月"。补充编制时间、是否有上位规划/先行文件及其时间。示例："2017年启动规划编制，2019年完成并实施。上位规划：《南京市总体规划(2018-2035)>"。找不到就写"经多轮检索未找到时间信息"', 500);
+
+    // 7. awardStatus（获奖情况）
+    const awardStatus = await extractField('awardStatus', currentContent,
+      '列出具体奖项名称，包括颁奖机构和奖项级别。无获奖标明"未检索到获奖信息"', 400);
+
+    // 8. caseType（案例类型）
+    const caseType = await extractField('caseType', currentContent,
+      '标明规划类型（城市更新规划、乡村设计规划、生态城市规划等）+ 建设状态（持续实施中、已建成并持续运营中等）。示例："城市更新规划（已建成并持续运营中）"', 300);
+
+    // 9. sustainabilityTargets（可持续目标）
+    let sustainabilityTargets: string[] = [];
+    try {
+      const stPrompt = `你是一名建筑案例信息提取专家。从以下内容中判断该项目体现了哪些可持续目标。
+
+## 可选目标（只能从中选择1-4个）
+宜居、智慧、人文、创新、绿色、韧性
+
+## 严格要求
+- 只返回项目实际体现的目标
+- 用中文
+- 返回合法JSON
+
+## 网页内容
+${currentContent.substring(0, 4000)}
+
+返回合法JSON：{"sustainabilityTargets": ["目标1", "目标2"]}`;
+
+      const stResult = await callQwenModel(stPrompt, 300);
+      sustainabilityTargets = stResult.sustainabilityTargets || [];
+    } catch (error: any) {
+      console.error('[Extract All Fields] sustainabilityTargets error:', error.message);
+    }
+
+    // 10. demonstrationValue（示范意义）
+    const demonstrationValue = await extractField('demonstrationValue', currentContent,
+      '格式：第一行3个关键词，如"关键词：社区参与、微更新、历史保护"，然后分点说明每个创新点，解释是否突破了政策制度、组织形式或技术标准。示例："关键词：社区参与、规划创新、历史保护\\n\\n创新点1：首创\\"院落\\"为单元的渐进式更新模式，突破了传统\\"大拆大建\\"的组织形式。\\n创新点2：建立居民协商机制，突破了自上而下的规划制度。"', 1500);
+
+    // 11. projectIntroduction（项目介绍，≥300字）
+    const projectIntroduction = await extractField('projectIntroduction', currentContent,
+      '项目背景介绍，不少于300字。内容应包括：项目所在地背景、面临的问题、更新目标。只从原文提取，不编造。如果原文内容不足，尽可能详细描述。', 2000);
+
+    // 12. constructionPhase（建设阶段，≥450字）
+    let constructionPhase: string[] = [];
+    try {
+      const cpPrompt = `你是一名建筑案例信息提取专家。从以下内容中提取项目建设阶段信息。
+
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的时间节点和建设内容
+- 体现阶段性特点，每个阶段说明时间段+做了什么+完成了什么目标
+- 总字数不少于450字
+- 尽可能详细，从原文中提取所有阶段信息
+- 返回字符串数组，每条一个阶段的详细说明
+- 不编造
+- 返回合法JSON
+
+## 网页内容
+${currentContent.substring(0, 5000)}
+
+返回合法JSON：{"constructionPhase": ["阶段1详细说明（时间段+做了什么+完成目标）", "阶段2详细说明..."]}`;
+
+      const cpResult = await callQwenModel(cpPrompt, 2500);
+      constructionPhase = cpResult.constructionPhase || [];
+    } catch (error: any) {
+      console.error('[Extract All Fields] constructionPhase error:', error.message);
+    }
+
+    // 13. awardEvaluation（项目获奖评价）
+    const awardEvaluation = await extractField('awardEvaluation', currentContent,
+      '格式："评价者单位——评价者姓名"。示例："中国城市规划学会——张某某"。找不到就写"经多轮检索未找到获奖评价信息"', 400);
+
+    // 14. projectInitiatives（项目举措，≥700字）
+    let projectInitiatives: string[] = [];
+    try {
+      const piPrompt = `你是一名建筑案例信息提取专家。从以下内容中提取项目举措和实施措施。
+
+## 严格要求
+- 用中文回答
+- 只提取原文中真实存在的举措
+- 是"示范意义"的详细阐述，具体解释措施和创新
+- 总字数不少于700字，尽可能详细
+- 返回字符串数组，每条一个举措的详细说明
+- 不编造
+- 返回合法JSON
+
+## 网页内容
+${currentContent.substring(0, 5000)}
+
+返回合法JSON：{"projectInitiatives": ["举措1详细说明（包括具体做法、创新点、效果）", "举措2详细说明..."]}`;
+
+      const piResult = await callQwenModel(piPrompt, 3000);
+      projectInitiatives = piResult.projectInitiatives || [];
+    } catch (error: any) {
+      console.error('[Extract All Fields] projectInitiatives error:', error.message);
+    }
+
+    // 15. infoSource（信息来源）
+    const infoSource = buildInfoSource(urls);
+
+    // 16. caseImages（示意图片）
+    const imagePatterns = [
+      /https?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
+    ];
+    const caseImages: string[] = [];
+    for (const pattern of imagePatterns) {
+      const matches = currentContent.match(pattern);
+      if (matches) {
+        caseImages.push(...matches.slice(0, 10));
       }
     }
-  } catch (error) {
-    console.error('[Contradiction Detection] Error:', error);
+
+    // ====== 构建提取结果 ======
+    const extraction: CaseExtraction = {
+      caseName: caseName || title.replace(/\[PDF\]|\[DOC\]/g, '').trim(),
+      location: location || '经多轮检索未找到区位信息',
+      projectScale: projectScale || '经多轮检索未找到规模信息',
+      totalInvestment: totalInvestment || '经多轮检索未找到投资信息',
+      participants: participants || '经多轮检索未找到参与单位信息',
+      startDate: startDate || '经多轮检索未找到时间信息',
+      endDate: '',
+      awardStatus: awardStatus || '未检索到获奖信息',
+      caseType: caseType || '经多轮检索未找到类型信息',
+      sustainabilityTargets,
+      demonstrationValue: demonstrationValue || '经多轮检索未找到示范意义信息',
+      projectIntroduction: projectIntroduction || '经多轮检索未找到项目介绍信息',
+      constructionPhase,
+      awardEvaluation: awardEvaluation || '经多轮检索未找到获奖评价信息',
+      projectInitiatives,
+      infoSource,
+      caseImages,
+      extractionSource: `全字段 AI 提取版（${round + 1}轮）`,
+      dataQuality: '待评估',
+    };
+
+    // ====== 质量检查 ======
+    if (round < MAX_ROUNDS - 1) {
+      const qualityReports = checkFieldQuality(extraction);
+      const failedFields = qualityReports.filter(r => !r.passed);
+
+      if (failedFields.length === 0) {
+        console.log('[Extract All Fields] All quality checks passed!');
+        // 评估数据质量
+        extraction.dataQuality = assessDataQuality(extraction);
+        return extraction;
+      }
+
+      console.log(`[Extract All Fields] ${failedFields.length} fields need improvement:`, failedFields.map(f => f.field));
+
+      // 补充搜索失败字段的内容
+      const supplementaryParts: string[] = [];
+      const baseQuery = title.replace(/\[PDF\]|\[DOC\]/g, '').trim();
+
+      for (const failed of failedFields) {
+        const extra = await supplementarySearch(baseQuery, failed.field, searchFn);
+        if (extra) {
+          supplementaryParts.push(extra);
+        }
+      }
+
+      supplementaryContent = supplementaryParts.join('\n\n');
+
+      if (supplementaryContent.length < 200) {
+        console.log('[Extract All Fields] Supplementary content too short, stopping');
+        extraction.dataQuality = assessDataQuality(extraction);
+        return extraction;
+      }
+    } else {
+      // 最后一轮，直接返回
+      extraction.dataQuality = assessDataQuality(extraction);
+      return extraction;
+    }
   }
 
-  // 根据实际提取结果评估数据质量
+  // 不应到达这里，但安全起见
+  return {
+    caseName: title,
+    location: '经多轮检索未找到区位信息',
+    projectScale: '经多轮检索未找到规模信息',
+    totalInvestment: '经多轮检索未找到投资信息',
+    participants: '经多轮检索未找到参与单位信息',
+    startDate: '经多轮检索未找到时间信息',
+    endDate: '',
+    awardStatus: '未检索到获奖信息',
+    caseType: '经多轮检索未找到类型信息',
+    sustainabilityTargets: [],
+    demonstrationValue: '经多轮检索未找到示范意义信息',
+    projectIntroduction: '经多轮检索未找到项目介绍信息',
+    constructionPhase: [],
+    awardEvaluation: '经多轮检索未找到获奖评价信息',
+    projectInitiatives: [],
+    infoSource: urls.slice(0, 5).join('\n'),
+    caseImages: [],
+    extractionSource: '全字段 AI 提取版（失败）',
+    dataQuality: '低（提取失败）',
+  };
+}
+
+function assessDataQuality(extraction: CaseExtraction): string {
   const filledFields = [
-    result.location,
-    result.projectScale,
-    result.totalInvestment,
-    result.participants,
-    result.startDate,
-    result.awardStatus,
-    result.caseType,
-    result.projectIntroduction,
-    result.demonstrationValue,
-  ].filter(v => v && v.length > 0 && !v.startsWith('未')).length;
+    extraction.location,
+    extraction.projectScale,
+    extraction.totalInvestment,
+    extraction.participants,
+    extraction.startDate,
+    extraction.awardStatus,
+    extraction.caseType,
+    extraction.projectIntroduction,
+    extraction.demonstrationValue,
+  ].filter(v => v && v.length > 0 && !v.startsWith('经多轮') && !v.startsWith('未')).length;
 
   if (filledFields >= 7) {
-    result.dataQuality = '高（多字段已提取）';
+    return '高（多字段已提取）';
   } else if (filledFields >= 3) {
-    result.dataQuality = '中（部分字段已提取）';
+    return '中（部分字段已提取）';
   } else {
-    result.dataQuality = '低（信息较少）';
+    return '低（信息较少）';
   }
-
-  console.log(`[Master Extraction] Data quality: ${result.dataQuality} (${filledFields}/9 fields filled)`);
-  console.log('[Master Extraction] Extraction completed');
-  return result;
 }
+
+// ==================== POST Handler ====================
 
 export async function POST(request: NextRequest) {
   try {
@@ -932,7 +666,6 @@ export async function POST(request: NextRequest) {
     if (urls && Array.isArray(urls) && urls.length > 0) {
       console.log(`[Smart Search] URL Mode: ${urls.length} URLs provided`);
 
-      // 爬取所有提供的 URL
       console.log('[Smart Search] Fetching page contents...');
       const contentMap = await fetchMultiplePages(urls);
       console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
@@ -941,19 +674,21 @@ export async function POST(request: NextRequest) {
         throw new Error('无法爬取任何提供的 URL，请检查 URL 是否正确');
       }
 
-      // 合并所有网页的内容
       const mergedContent = Array.from(contentMap.entries())
-        .map(([url, content]) => {
-          return `=== URL: ${url} ===\n${content}`;
-        })
+        .map(([url, content]) => `=== URL: ${url} ===\n${content}`)
         .filter(item => item.length > 100)
         .join('\n\n');
 
       const firstUrl = urls[0];
-      const caseExtraction = await extractAllInformation(mergedContent, '自定义案例', firstUrl);
+      const caseExtraction = await extractAllFields(
+        mergedContent,
+        '自定义案例',
+        urls,
+        async (query) => {
+          return await searchWithTavily(query, 3);
+        }
+      );
 
-      // 更新信息来源
-      caseExtraction.infoSource = urls.join('\n');
       caseExtraction.dataQuality = contentMap.size > 0 ? '高（多来源信息补全）' : '中（单来源）';
 
       console.log('[Smart Search] All extraction completed!');
@@ -965,15 +700,14 @@ export async function POST(request: NextRequest) {
         case_extraction: caseExtraction,
         metadata: {
           timestamp: new Date().toISOString(),
-          extraction_mode: 'URL 输入模式（用户直接提供 URL）',
-          extraction_calls: 7,
+          extraction_mode: '全字段 AI 提取版（多轮搜索）',
           data_quality: caseExtraction.dataQuality,
           source_count: urls.length,
         },
       });
     }
 
-    // 模式 2：搜索模式（使用本地搜索服务）
+    // 模式 2：搜索模式
     if (!q) {
       return NextResponse.json(
         { success: false, error: 'Missing required parameter: q (for search mode) or urls (for URL mode)' },
@@ -984,27 +718,23 @@ export async function POST(request: NextRequest) {
     console.log(`[Smart Search] Query: ${q}, Max Results: ${max_results}`);
     console.log(`[Smart Search] Using Local Qwen Model: ${process.env.LOCAL_QWEN_API_URL}`);
 
-    console.log('[Smart Search] Step 1: Searching with local web search API...');
+    // ====== 搜索阶段 ======
+    console.log('[Smart Search] Step 1: Searching with Tavily...');
 
-    // 优化搜索关键词：添加建筑、案例、规划等相关关键词
     const relatedKeywords = ['建筑案例', '城市规划', '生态城', '绿色建筑', '项目案例', '示范工程'];
     let optimizedQuery = q;
-
-    // 如果查询词不包含相关关键词，则添加第一个关键词
     const hasKeyword = relatedKeywords.some(keyword => q.includes(keyword));
     if (!hasKeyword) {
       optimizedQuery = `${q} ${relatedKeywords[0]}`;
       console.log(`[Smart Search] Optimized query: "${q}" → "${optimizedQuery}"`);
     }
 
-    // 优先使用 Tavily（质量最高），回退到 web-search
-    let rawSearchResults = [];
+    let rawSearchResults: SearchResult[] = [];
 
     try {
-      console.log('[Smart Search] Step 1: Searching with Tavily...');
       rawSearchResults = await searchWithTavily(optimizedQuery, max_results);
       console.log(`[Smart Search] Tavily returned ${rawSearchResults.length} results`);
-    } catch (tavilyError) {
+    } catch (tavilyError: any) {
       console.warn('[Smart Search] Tavily failed, falling back to web-search:', tavilyError.message);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const webSearchUrl = `${baseUrl}/api/web-search`;
@@ -1015,13 +745,13 @@ export async function POST(request: NextRequest) {
       const searchData = await searchResponse.json();
       rawSearchResults = searchData.data || [];
     }
-    console.log(`[Smart Search] Found ${rawSearchResults.length} raw search results`);
 
     if (rawSearchResults.length === 0) {
       throw new Error('没有找到相关的搜索结果。请尝试：1) 使用其他搜索词；2) 使用 URL 输入模式直接提供网页链接');
     }
 
-    console.log('[Smart Search] Step 2: Fetching page contents (for information completion)...');
+    // ====== 页面爬取阶段 ======
+    console.log('[Smart Search] Step 2: Fetching page contents...');
     const searchUrls = rawSearchResults.slice(0, max_results * 10).map(r => r.url);
     const contentMap = await fetchMultiplePages(searchUrls);
     console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
@@ -1041,103 +771,8 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // 定义高质量域名白名单
-    const highQualityDomains = [
-      'gov.cn',           // 政府网站
-      'mohurd.gov.cn',    // 住建部
-      'people.com.cn',     // 人民网
-      'xinhuanet.com',    // 新华网
-      'baike.baidu.com',  // 百度百科
-      'zh.wikipedia.org', // 维基百科
-      'archdaily.com',    // 建筑 daily
-      'gooood.cn',        // 谷德设计网
-      'cn.archdaily.com', // 中国建筑 daily
-      'sina.com.cn',      // 新浪
-      'sohu.com',         // 搜狐
-      '163.com',          // 网易
-      'qq.com',           // 腾讯
-    ];
-
-    console.log(`[Quality Filtering] Before: ${searchResults.length} results`);
-
-    // 严格质量过滤：移除低质量结果
-    const qualityFilters = [
-      // 过滤条件 1：通用链接页
-      (result: SearchResult) => !result.url.includes('baidu.com/link'),
-
-      // 过滤条件 2：新闻文章（不包含详细案例信息）
-      (result: SearchResult) => !result.title.includes('新闻') &&
-                           !result.title.includes('2017') &&
-                           !result.title.includes('2018') &&
-                           !result.title.includes('2019') &&
-                           !result.title.includes('2020'),
-
-      // 过滤条件 3：内容太短（少于 200 字符）
-      (result: SearchResult) => !result.content || result.content.length > 200,
-
-      // 过滤条件 4：标题太短（少于 5 个字符）
-      (result: SearchResult) => result.title && result.title.length > 5,
-
-      // 过滤条件 5：标题和摘要完全相同
-      (result: SearchResult) => result.title !== result.snippet,
-
-      // 过滤条件 6：不包含案例相关关键词
-      (result: SearchResult) => {
-        const content = (result.title + ' ' + result.snippet).toLowerCase();
-        return content.includes('案例') ||
-               content.includes('项目') ||
-               content.includes('规划') ||
-               content.includes('生态');
-      },
-
-      // 过滤条件 7：高质量域名优先（加分项）
-      (result: SearchResult) => {
-        const isHighQualityDomain = highQualityDomains.some(domain =>
-          result.url.includes(domain)
-        );
-        return true; // 不过滤，但用于排序
-      }
-    ];
-
-    // 应用所有过滤条件
-    const filteredResults = searchResults.filter(result =>
-      qualityFilters.slice(0, 6).every(filter => filter(result))
-    );
-
-    console.log(`[Quality Filtering] After: ${filteredResults.length} results`);
-
-    // 如果过滤后结果太少，放宽过滤条件
-    let finalResults: SearchResult[];
-    if (filteredResults.length >= 3) {
-      finalResults = filteredResults;
-    } else {
-      console.log('[Quality Filtering] Too few results, relaxing filters...');
-      finalResults = searchResults.filter(result =>
-        // 只保留最重要的过滤条件
-        !result.url.includes('baidu.com/link') &&
-        (!result.content || result.content.length > 200) &&
-        result.title && result.title.length > 5
-      ).slice(0, 10); // 最多保留 10 个结果
-    }
-
-    // 优化排序：高质量域名优先 + 内容长度优先
-    finalResults.sort((a, b) => {
-      // 优先级 1：高质量域名
-      const aHighQuality = highQualityDomains.some(domain => a.url.includes(domain));
-      const bHighQuality = highQualityDomains.some(domain => b.url.includes(domain));
-      if (aHighQuality && !bHighQuality) return -1;
-      if (!aHighQuality && bHighQuality) return 1;
-
-      // 优先级 2：内容长度（更长的优先）
-      const aContentLength = a.content ? a.content.length : 0;
-      const bContentLength = b.content ? b.content.length : 0;
-      return bContentLength - aContentLength;
-    });
-
-    console.log(`[Quality Filtering] Final: ${finalResults.length} results`);
-
-    console.log('[Smart Search] Step 3: Merging contents and extracting information...');
-    // 合并所有网页的内容
+    // ====== 内容合并 ======
+    console.log('[Smart Search] Step 3: Merging contents...');
     const mergedContent = Array.from(contentMap.entries())
       .map(([url, content]) => {
         const searchResult = searchResults.find(r => r.url === url);
@@ -1149,24 +784,28 @@ export async function POST(request: NextRequest) {
       })
       .filter(item => item.content && item.content.length > 100)
       .sort((a, b) => b.content.length - a.content.length)
-      .map(item => {
-        return `=== ${item.title} ===\n${item.content}`;
-      })
+      .map(item => `=== ${item.title} ===\n${item.content}`)
       .join('\n\n');
 
     const topResult = searchResults[0];
     const enrichedContent = (topResult.content || '') + '\n\n' + mergedContent;
 
-    const caseExtraction = await extractAllInformation(enrichedContent, topResult.title, topResult.url);
-
-    // 更新信息来源，显示所有使用的 URL
+    // ====== 信息来源 URL 列表 ======
     const infoSources = Array.from(contentMap.keys()).slice(0, 10);
-    caseExtraction.infoSource = infoSources.join('\n');
-    caseExtraction.dataQuality = contentMap.size > 0 ? '高（多来源信息补全）' : '中（单来源）';
+
+    // ====== 全字段提取 ======
+    console.log('[Smart Search] Step 4: Extracting all fields...');
+    const caseExtraction = await extractAllFields(
+      enrichedContent,
+      topResult.title,
+      infoSources,
+      async (query: string) => {
+        return await searchWithTavily(query, 3);
+      }
+    );
 
     console.log('[Smart Search] All extraction completed!');
     console.log('[Smart Search] Final extraction:', JSON.stringify(caseExtraction, null, 2));
-    console.log('[Smart Search] Info sources:', infoSources.length);
 
     const avgRelevanceScore = searchResults.reduce((sum: number, r: any) => sum + (r.relevance_score || 0), 0) / searchResults.length;
 
@@ -1177,8 +816,7 @@ export async function POST(request: NextRequest) {
       case_extraction: caseExtraction,
       metadata: {
         timestamp: new Date().toISOString(),
-        extraction_mode: '精细提取版（正则匹配 + AI 辅助）',
-        extraction_calls: 7,
+        extraction_mode: '全字段 AI 提取版（多轮搜索）',
         data_quality: caseExtraction.dataQuality,
         relevance_score: avgRelevanceScore,
       },
