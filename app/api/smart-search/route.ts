@@ -723,112 +723,64 @@ async function fetchMultiplePages(urls: string[]): Promise<Map<string, string>> 
   return contentMap;
 }
 
-async function evaluateRelevance(query: string, searchResult: SearchResult): Promise<{ relevance_score: number; relevance_reason: string }> {
-  // 检查是否是低质量结果（通用链接页）
+function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { relevance_score: number; relevance_reason: string } {
+  // 检查是否是低质量结果
   if (searchResult.url.includes('baidu.com/link') || 
       searchResult.url.includes('bing.com/search') ||
       searchResult.url.includes('sogou.com/link')) {
-    console.warn('[Relevance Evaluation] Filtered out generic link page:', searchResult.url);
     return { relevance_score: 0, relevance_reason: '通用链接页，已过滤' };
   }
 
-  // 检查是否是新闻页面
-  if (searchResult.title.includes('新闻') || 
-      searchResult.title.includes('2017') ||
-      searchResult.title.includes('2018') ||
-      searchResult.title.includes('2019') ||
-      searchResult.title.includes('2020') ||
-      searchResult.title.includes('2021')) {
-    console.warn('[Relevance Evaluation] Filtered out news article:', searchResult.title);
-    return { relevance_score: 10, relevance_reason: '新闻文章，不是具体案例' };
+  const queryTerms = query.split(/\s+/).filter(t => t.length > 1);
+  const title = searchResult.title.toLowerCase();
+  const snippet = (searchResult.snippet || '').toLowerCase();
+  const url = searchResult.url.toLowerCase();
+  const combined = `${title} ${snippet}`;
+
+  let score = 40; // 基础分（提高基础分，确保有基本评分）
+  let reasons: string[] = [];
+
+  // 关键词匹配加分
+  for (const term of queryTerms) {
+    const termLower = term.toLowerCase();
+    if (title.includes(termLower)) { score += 20; reasons.push(`标题匹配"${term}"`); }
+    else if (snippet.includes(termLower)) { score += 10; reasons.push(`摘要匹配"${term}"`); }
   }
 
-  const locationKeywords = query.match(/([^\s]+[市县区省])/g);
-  const locationKeyword = locationKeywords ? locationKeywords[0] : '';
-
-  const prompt = `
-Evaluate relevance of this search result to user's query.
-
-## User Query
-Query: "${query}"
-${locationKeyword ? `Location Keyword: ${locationKeyword} - If search result mentions this location (the city/province in user's query), it is MORE relevant` : '- No specific location keyword in query.'}
-
-## Search Result
-- Title: ${searchResult.title}
-- Snippet: ${searchResult.snippet.substring(0, 300)}
-- URL: ${searchResult.url}
-- Full Content Preview: ${(searchResult.content || '').substring(0, 500)}
-
-## Relevance Criteria (STRICT)
-
-Rate relevance on a scale of 0-100:
-
-### Location Matching (CRITICAL - Must Match)
-${locationKeyword ? `- MUST mention "${locationKeyword}" (the city/province in user's query) to be considered relevant.` : '- No specific location keyword in query.'}
-- If location doesn't match, score should be 0-10.
-
-### Content Relevance (CRITICAL)
-- 90-100: Highly relevant - The result is a SPECIFIC ARCHITECTURE CASE, addresses user's query directly (same topic, location, and scope). Must be a case study, not news.
-- 60-89: Moderately relevant - Related architecture/city planning but may lack details or specific information.
-- 30-59: Somewhat relevant - Tangentially related but not a proper case study.
-- 0-29: Not relevant - Unrelated topics (different country, different city, unrelated industry).
-
-### Content Quality Checks
-- Is it a specific case study? (YES: score 80+, NO: score 0-30)
-- Does it have detailed information? (YES: score 70+, NO: score 0-40)
-- Is it a news article? (YES: score 0-20, NO: score 60+)
-
-## Task
-Provide a brief reason for rating in 1-2 sentences, highlighting:
-1. Location matching (CRITICAL - if doesn't match, score should be 0-10)
-2. Whether it's a specific case study (CRITICAL - if not, score should be 0-30)
-3. Content quality and detail
-
-Return ONLY valid JSON:
-{
-  "relevance_score": number (0-100, BE STRICT),
-  "relevance_reason": "brief explanation (MUST mention if it's a case study)"
-}
-`;
-
-  try {
-    const result = await callQwenModel(prompt, 300);
-    let relevanceScore = Math.min(100, Math.max(0, result.relevance_score || 0));
-
-    // 如果没有位置匹配，大幅降低分数
-    if (locationKeyword) {
-      const combinedContent = (searchResult.title + ' ' + searchResult.snippet + ' ' + (searchResult.content || '')).toLowerCase();
-      if (!combinedContent.includes(locationKeyword.toLowerCase())) {
-        console.warn(`[Relevance Evaluation] No location match: ${locationKeyword} not found in content`);
-        relevanceScore = Math.min(10, relevanceScore); // 最多10分
-      } else {
-        relevanceScore = Math.min(100, relevanceScore + 20);
-      }
-    }
-
-    return {
-      relevance_score: relevanceScore,
-      relevance_reason: result.relevance_reason || 'Unable to evaluate'
-    };
-  } catch (error) {
-    console.error('[Relevance Evaluation] Error:', error);
-    return { relevance_score: 10, relevance_reason: 'Unable to evaluate' };
+  // 高质量域名加分
+  const highQualityPatterns = ['gov.cn', 'edu.cn', 'archdaily', 'gooood', 'archidogs', 'archina', 'mohurd', 'people.com', 'xinhuanet', 'lifeweek', 'souhu.com/a/', 'thepaper'];
+  for (const pattern of highQualityPatterns) {
+    if (url.includes(pattern)) { score += 10; reasons.push('高质量来源'); break; }
   }
+
+  // PDF/文档类降分（通常内容难以提取）
+  if (title.includes('[PDF]') || title.includes('[DOC]')) { score -= 10; }
+
+  // Tavily 自带分数加权
+  if (searchResult.score && searchResult.score > 0) {
+    score = Math.round(score * 0.6 + searchResult.score * 0.4);
+  }
+
+  score = Math.min(100, Math.max(0, score));
+
+  return {
+    relevance_score: score,
+    relevance_reason: reasons.length > 0 ? reasons.join('；') : '基础相关性'
+  };
 }
+
 
 async function filterAndRankResults(query: string, searchResults: SearchResult[], max_results: number): Promise<SearchResult[]> {
   console.log(`[Relevance Filtering] Evaluating ${searchResults.length} results...`);
 
-  const resultsWithRelevance = await Promise.all(
-    searchResults.map(async (result) => {
-      const evaluation = await evaluateRelevance(query, result);
-      return {
-        ...result,
-        relevance_score: evaluation.relevance_score,
-        relevance_reason: evaluation.relevance_reason
-      };
-    })
-  );
+  const resultsWithRelevance = searchResults.map((result) => {
+    const evaluation = evaluateRelevanceSimple(query, result);
+    return {
+      ...result,
+      relevance_score: evaluation.relevance_score,
+      relevance_reason: evaluation.relevance_reason
+    };
+  });
 
   // 放宽过滤：保留相关性分数 >= 20 的结果（降低阈值以提高通过率）
   const filteredResults = resultsWithRelevance.filter(result => result.relevance_score >= 20);
@@ -1075,14 +1027,19 @@ export async function POST(request: NextRequest) {
     console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
 
     // 格式化搜索结果
-    const searchResults = rawSearchResults.map((item: any) => ({
-      title: item.title || '未命名',
-      url: item.url,
-      snippet: item.snippet || '',
-      content: contentMap.get(item.url) || '',
-      source: 'local-search-service',
-      score: 0,
-    }));
+    const searchResults = rawSearchResults.map((item: any) => {
+      const evaluation = evaluateRelevanceSimple(q, item);
+      return {
+        title: item.title || '未命名',
+        url: item.url,
+        snippet: item.snippet || '',
+        content: contentMap.get(item.url) || item.content || '',
+        source: item.source || 'tavily',
+        score: item.score || 0,
+        relevance_score: evaluation.relevance_score,
+        relevance_reason: evaluation.relevance_reason,
+      };
+    });
 
     // 定义高质量域名白名单
     const highQualityDomains = [
