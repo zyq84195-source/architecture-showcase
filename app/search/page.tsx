@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import CaseCard from '@/components/case-card'
+import WebCaseCard from '@/components/web-case-card'
 
 interface Case {
   id: string
@@ -22,7 +23,31 @@ interface WebSearchResult {
   title: string
   url: string
   snippet: string
+  relevance_score?: number
+  relevance_reason?: string
   [key: string]: any
+}
+
+interface CaseExtraction {
+  caseName: string
+  location: string
+  projectScale: string
+  totalInvestment: string
+  participants: string
+  startDate: string
+  endDate: string
+  awardStatus: string
+  caseType: string
+  sustainabilityTargets: string[]
+  demonstrationValue: string
+  projectIntroduction: string
+  constructionPhase: string[]
+  awardEvaluation: string
+  projectInitiatives: string[]
+  infoSource: string
+  caseImages: string[]
+  extractionSource: string
+  dataQuality: string
 }
 
 interface ComparisonReport {
@@ -52,6 +77,12 @@ export default function SearchPage() {
   const [webIsSearching, setWebIsSearching] = useState(false)
   const [webError, setWebError] = useState('')
   const [webSuggestion, setWebSuggestion] = useState('')
+
+  // AI 提取状态
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extraction, setExtraction] = useState<CaseExtraction | null>(null)
+  const [extractionError, setExtractionError] = useState('')
+  const [selectedWebResult, setSelectedWebResult] = useState<WebSearchResult | null>(null)
 
   // AI比对状态
   const [selectedCases, setSelectedCases] = useState<Case[]>([])
@@ -93,7 +124,7 @@ export default function SearchPage() {
     }, 500)
   }
 
-  // 全网搜索
+  // 全网搜索（使用 search-service 快速获取结果列表）
   const handleWebSearch = async () => {
     if (!webSearchTerm) return
 
@@ -101,9 +132,10 @@ export default function SearchPage() {
     setWebHasSearched(true)
     setWebError('')
     setWebSuggestion('')
+    setExtraction(null)
+    setSelectedWebResult(null)
 
     try {
-      // 使用新的搜索服务 API
       const response = await fetch(
         `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=tavily`
       )
@@ -123,6 +155,39 @@ export default function SearchPage() {
     }
   }
 
+  // AI 深度提取（点击某条搜索结果后触发）
+  const handleExtractCase = async (result: WebSearchResult) => {
+    setSelectedWebResult(result)
+    setIsExtracting(true)
+    setExtraction(null)
+    setExtractionError('')
+
+    try {
+      const response = await fetch('/api/smart-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          q: result.title.replace(/\[.*?\]/g, '').trim(),
+          urls: [result.url],
+          max_results: 1,
+          snippet: result.snippet,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.case_extraction) {
+        setExtraction(data.case_extraction)
+      } else {
+        setExtractionError(data.error || 'AI 提取失败')
+      }
+    } catch (error: any) {
+      setExtractionError(`AI 提取失败：${error.message}`)
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
   const handleClear = () => {
     setSearchTerm('')
     setSelectedType('')
@@ -135,6 +200,9 @@ export default function SearchPage() {
     setWebHasSearched(false)
     setWebError('')
     setWebSuggestion('')
+    setExtraction(null)
+    setSelectedWebResult(null)
+    setExtractionError('')
   }
 
   const quickSearchTags = ['城市更新', '文化保护', '历史街区', '社区更新', '可持续发展', '绿色建筑', '宜居', '人文']
@@ -485,22 +553,71 @@ export default function SearchPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {webResults.map((item, index) => (
-                      <div key={index} className="elegant-card p-6">
-                        <h3 className="text-xl font-bold text-heading mb-2">
-                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">
-                            {item.title}
-                          </a>
-                        </h3>
-                        <p className="text-gray-700 mb-3">{item.snippet}</p>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-700"
-                        >
-                          查看详情 →
-                        </a>
+                    {/* AI 提取结果（如果有选中的） */}
+                    {(extraction || isExtracting || extractionError) && (
+                      <div className="mb-6">
+                        {isExtracting && (
+                          <div className="elegant-card p-8 text-center">
+                            <div className="animate-spin w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full mx-auto mb-4"></div>
+                            <p className="text-gray-600 font-medium">AI 正在提取案例信息...</p>
+                            <p className="text-gray-400 text-sm mt-1">正在爬取页面并分析内容，请稍候</p>
+                          </div>
+                        )}
+                        {extractionError && !isExtracting && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                            <p className="text-red-700 text-sm">⚠️ {extractionError}</p>
+                          </div>
+                        )}
+                        {extraction && !isExtracting && (
+                          <WebCaseCard
+                            extraction={extraction}
+                            sourceUrl={selectedWebResult?.url}
+                            onClose={() => {
+                              setExtraction(null)
+                              setSelectedWebResult(null)
+                              setExtractionError('')
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {/* 搜索结果列表 */}
+                    {!extraction && !isExtracting && webResults.map((item, index) => (
+                      <div
+                        key={index}
+                        className={`elegant-card p-6 cursor-pointer transition-all hover:shadow-elegant-hover ${
+                          selectedWebResult?.url === item.url ? 'ring-2 ring-blue-500' : ''
+                        }`}
+                        onClick={() => handleExtractCase(item)}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* 相关度标签 */}
+                          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                            <span className="text-sm font-bold text-blue-600">
+                              {item.relevance_score || item.score ? Math.round((item.relevance_score || item.score || 0)) : ''}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-bold text-heading mb-1 line-clamp-2">
+                              {item.title}
+                            </h3>
+                            <p className="text-gray-600 text-sm mb-2 line-clamp-2">{item.snippet}</p>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-400 truncate max-w-[300px]">
+                                {item.url}
+                              </span>
+                              {item.relevance_reason && (
+                                <span className="text-xs text-blue-500">{item.relevance_reason}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <button className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+                              AI 提取
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -1,11 +1,11 @@
 ﻿// @ts-nocheck
 /**
- * 智能搜索 API（全字段 AI 提取版）
+ * 智能搜索 API(全字段 AI 提取版)
  *
- * 核心策略：
+ * 核心策略:
  * 1. Tavily 搜索 + 多轮补充搜索
  * 2. 页面爬取获取真实内容
- * 3. AI 逐字段提取，严格基于原文
+ * 3. AI 逐字段提取,严格基于原文
  * 4. 质量检查 + 补充搜索循环
  */
 
@@ -46,7 +46,7 @@ interface CaseExtraction {
   dataQuality: string;
 }
 
-// AI 模型调用：优先使用智谱 GLM-4-Flash（云端），回退到本地 Ollama Qwen
+// AI 模型调用:优先使用智谱 GLM-4-Flash(云端),回退到本地 Ollama Qwen
 async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<any> {
   const zhipuApiKey = process.env.ZAI_API_KEY;
   const useZhipu = !!zhipuApiKey;
@@ -72,7 +72,7 @@ async function callQwenModel(prompt: string, maxTokens: number = 2000): Promise<
       messages: [
         {
           role: 'system',
-          content: '你是一名建筑案例信息提取专家。必须用中文回答。只返回合法 JSON，不要 markdown 代码块、不要额外文字。严格从提供的内容中提取真实信息，绝不编造、不虚构、不推测。如果内容中没有相关信息，对应字段填空字符串或空数组。忽略所有网站导航、欢迎语、登录注册等非正文内容。'
+          content: '你是一名建筑案例信息提取专家。必须用中文回答。只返回合法 JSON,不要 markdown 代码块、不要额外文字。严格从提供的内容中提取真实信息,绝不编造、不虚构、不推测。如果内容中没有相关信息,对应字段填空字符串或空数组。忽略所有网站导航、欢迎语、登录注册等非正文内容。'
         },
         {
           role: 'user',
@@ -195,7 +195,7 @@ async function fetchPageContent(url: string): Promise<string> {
         .replace(/\s+/g, ' ')
         .trim();
 
-      // 过滤导航文本：按短句分割，跳过无意义的片段
+      // 过滤导航文本:按短句分割,跳过无意义的片段
       // 先按空格拆成长词组
       const words = bodyText.split(/\s+/);
       const meaningfulWords: string[] = [];
@@ -207,7 +207,7 @@ async function fetchPageContent(url: string): Promise<string> {
           skipCount++;
           continue;
         }
-        // 如果连续跳过太多短词，说明还在导航区域
+        // 如果连续跳过太多短词,说明还在导航区域
         if (skipCount > 20 && word.length < 10) {
           skipCount++;
           continue;
@@ -252,7 +252,7 @@ function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { r
   if (searchResult.url.includes('baidu.com/link') ||
       searchResult.url.includes('bing.com/search') ||
       searchResult.url.includes('sogou.com/link')) {
-    return { relevance_score: 0, relevance_reason: '通用链接页，已过滤' };
+    return { relevance_score: 0, relevance_reason: '通用链接页,已过滤' };
   }
 
   const queryTerms = query.split(/\s+/).filter(t => t.length > 1);
@@ -285,7 +285,7 @@ function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { r
 
   return {
     relevance_score: score,
-    relevance_reason: reasons.length > 0 ? reasons.join('；') : '基础相关性'
+    relevance_reason: reasons.length > 0 ? reasons.join(';') : '基础相关性'
   };
 }
 
@@ -299,32 +299,45 @@ interface QualityReport {
 
 function checkFieldQuality(extraction: CaseExtraction): QualityReport[] {
   const checks: QualityReport[] = [];
+  const defaultValues = ['无', '未检索到', '未检索到获奖信息'];
 
-  // 字数检查
-  if ((extraction.projectIntroduction || '').length < 300) {
-    checks.push({ field: 'projectIntroduction', passed: false, reason: `项目介绍仅${(extraction.projectIntroduction || '').length}字，要求≥300字` });
+  const isFilled = (val: any) => typeof val === 'string' && val.trim().length >= 5 && !defaultValues.some(d => val.startsWith(d));
+
+  // 核心字段检查
+  const requiredChecks: [string, string, number][] = [
+    ['projectIntroduction', extraction.projectIntroduction, 300],
+    ['demonstrationValue', extraction.demonstrationValue, 200],
+  ];
+  for (const [field, val, minLen] of requiredChecks) {
+    if (!isFilled(val as string)) {
+      checks.push({ field, passed: false, reason: `${field}为空或过短` });
+    } else if ((val as string).length < minLen) {
+      checks.push({ field, passed: false, reason: `${field}仅${(val as string).length}字,要求≥${minLen}字` });
+    }
   }
 
+  // 建设阶段
   const constructionText = (extraction.constructionPhase || []).join('');
   if (constructionText.length < 450) {
-    checks.push({ field: 'constructionPhase', passed: false, reason: `建设阶段仅${constructionText.length}字，要求≥450字` });
+    checks.push({ field: 'constructionPhase', passed: false, reason: `建设阶段仅${constructionText.length}字,要求≥450字` });
   }
 
+  // 项目举措
   const initiativesText = (extraction.projectInitiatives || []).join('');
   if (initiativesText.length < 700) {
-    checks.push({ field: 'projectInitiatives', passed: false, reason: `项目举措仅${initiativesText.length}字，要求≥700字` });
+    checks.push({ field: 'projectInitiatives', passed: false, reason: `项目举措仅${initiativesText.length}字,要求≥700字` });
   }
 
-  // 格式检查
+  // 位置格式检查
   if (extraction.location && !extraction.location.includes('-') && !extraction.location.includes('省') && !extraction.location.includes('市')) {
     checks.push({ field: 'location', passed: false, reason: '所在区位格式应为"省-市-区县"' });
   }
 
-  // 空值检查
+  // 必填字段空值检查
   const requiredFields = ['location', 'projectScale', 'participants', 'startDate', 'caseType', 'demonstrationValue', 'projectIntroduction'];
   for (const field of requiredFields) {
-    const value = extraction[field];
-    if (!value || (typeof value === 'string' && value.length < 5)) {
+    const value = extraction[field as keyof CaseExtraction] as string;
+    if (!isFilled(value)) {
       checks.push({ field, passed: false, reason: `${field}为空或过短` });
     }
   }
@@ -365,20 +378,20 @@ ${requirements}
 - 只提取原文中真实存在的信息
 - 用中文回答
 - 不编造任何事实、数据或人名
-- 如果原文中没有相关信息，JSON值设为空字符串""
+- 如果原文中没有相关信息,JSON值设为空字符串""
 - 忽略网站导航、菜单、登录注册等非正文内容
 - 返回合法JSON
 
 ## 网页内容
 ${content.substring(0, 8000)}
 
-返回合法JSON：{"result": "提取的结果"}`;
+返回合法JSON:{"result": "提取的结果"}`;
 
   try {
     const result = await callQwenModel(prompt, maxTokens);
     const raw = result.result !== undefined ? result.result : (result[field] || '');
     if (!raw || typeof raw !== 'string') return '';
-    // 过滤 AI 返回的“无意义”值
+    // 过滤 AI 返回的"无意义"值
     const cleaned = raw.trim();
     const meaningless = ['无', '未找到', '未检索到', 'None', 'N/A', 'null', '暂无', '不确定', '无法确定'];
     if (meaningless.includes(cleaned) || cleaned.length < 2) return '';
@@ -434,23 +447,52 @@ async function supplementarySearch(
 
 // ==================== 核心提取函数 ====================
 
-// 安全转换数组字段：确保每条都是字符串
+// 安全转换数组字段:确保每条都是字符串
 function safeStringArray(arr: any[]): string[] {
   return (arr || []).map((item: any) => {
     if (typeof item === 'string') return item;
     if (typeof item === 'object' && item !== null) {
-      return Object.entries(item).map(([k, v]) => `${k}：${v}`).join('；');
+      return Object.entries(item).map(([k, v]) => `${k}:${v}`).join(';');
     }
     return String(item);
   });
 }
 
-// 辅助函数：构建 infoSource 字符串
+// 辅助函数:构建 infoSource 字符串(中文展示+网址)
 function buildInfoSource(urlList: string[]): string {
+  // 域名中文名映射
+  const domainNames: Record<string, string> = {
+    'worldbank.org': '世界银行',
+    'documents1.worldbank.org': '世界银行文档库',
+    'tianjineco-city.com': '中新天津生态城官网',
+    'mayortraining.org': '中国市长培训网',
+    'thupdi.com': '清华同衡规划设计研究院',
+    'archdaily.cn': 'ArchDaily中国',
+    'gooood.cn': '谷德设计网',
+    'archidogs.com': '建筑学院',
+    'archina.com': '建筑中国',
+    'mohurd.gov.cn': '住房和城乡建设部',
+    'gov.cn': '中国政府网',
+    'people.com.cn': '人民网',
+    'xinhuanet.com': '新华网',
+    'thepaper.cn': '澎湃新闻',
+    'sohu.com': '搜狐网',
+    'qq.com': '腾讯网',
+    'sina.com.cn': '新浪网',
+    'eastasia.iclei.org': '宜可城-地方可持续发展协会',
+    'gtn-caselibrary.org.cn': '全球技术案例库',
+    'cnki.net': '中国知网',
+    'lifeweek.com.cn': '三联生活周刊',
+    'planning.org.cn': '中国城市规划网',
+    'china-up.com': '中国城市规划设计研究院',
+  };
+
   return urlList.slice(0, 5).map(url => {
     try {
-      const hostname = new URL(url).hostname;
-      return `${hostname}\n${url}`;
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      // 精确匹配
+      const name = domainNames[hostname] || Object.entries(domainNames).find(([d]) => hostname.endsWith('.' + d) || hostname === d)?.[1] || hostname;
+      return `${name}\n${url}`;
     } catch {
       return url;
     }
@@ -466,38 +508,100 @@ async function extractAllFields(
   const cleanTitle = title.replace(/\[PDF\]|\[DOC\]/g, '').trim();
   console.log('[Extract All Fields] Starting 3-phase extraction for:', cleanTitle);
 
-  // ====== Phase 1：一次批量提取所有字段 ======
+  // ====== Phase 1:一次批量提取所有字段 ======
   console.log('[Extract All Fields] Phase 1: Batch extraction from web content');
 
-  const batchPrompt = `你是一名建筑案例信息提取专家。从以下网页内容中一次性提取所有字段信息。
+  const batchPrompt = `你是一名建筑/城市规划案例信息提取专家。请从以下网页内容中严格按照要求提取所有字段信息。
 
-## 提取要求
-- caseName：正式项目全称
-- location："XX省-XX市-XX区县"格式，必须用"-"分隔
-- projectScale：用地面积+规划等级，或适用范围
-- totalInvestment：具体投资金额（如"总投资约15亿元"）
-- participants：委托方、建设方、规划设计方、编制单位（格式："委托方：XX；规划设计方：XX"）
-- startDate：起止时间（含编制/开工/竣工）
-- endDate：结束时间（如有）
-- awardStatus：具体奖项名称+颁奖机构
-- caseType：规划类型+建设状态
-- sustainabilityTargets：从[宜居、智慧、人文、创新、绿色、韧性]中选1-4个
-- demonstrationValue：关键词+创新点阐述（≥200字）
-- projectIntroduction：项目背景介绍（≥300字）
-- constructionPhase：建设阶段详情（纯字符串数组，每条≥80字）
-- awardEvaluation：评价者单位+姓名
-- projectInitiatives：项目举措详情（纯字符串数组，每条≥80字）
+## 字段提取要求(逐字段详细说明)
+
+### 1. caseName(案例名称)
+正式项目全称,使用官方名称。
+
+### 2. location(所在区位)
+格式严格为"XX省-XX市-XX区县",用"-"分隔。如"江苏省-南京市-秦淮区"。
+
+### 3. projectScale(项目规模)
+- 如果是规划类项目:必须说明用地面积和规划等级
+- 如果是导则或条例:必须说明针对对象或适用范围
+- 示例:"用地面积约4.69公顷"或"适用于XX市城市更新区域"
+
+### 4. totalInvestment(总投资额)
+具体投资金额。示例:"总投资约15亿元"。如原文未提及,填""。
+
+### 5. participants(参与主体)
+必须分别列出以下角色(如果原文中有的话):
+- 委托方
+- 建设方
+- 规划设计方
+- 编制单位(必须写全,所有参与编制的单位都要说明)
+格式示例:"委托方:XX;规划设计方:XX;编制单位:XX"
+
+### 6. startDate(起止时间)
+- 必须说明开始和结束时间,格式"xxxx年-yyyy年"
+- 如果有编制时间,也要补充说明
+- 如果存在相关的上位规划、先行文件,要说明其时间
+- 示例:"2015年启动,2018年编制完成。上位规划《XX总规》于2010年获批"
+
+### 7. endDate(结束时间)
+单独填写结束时间。如项目仍在进行,填"持续中"。
+
+### 8. awardStatus(获奖情况)
+- 搜索并列出具体的奖项名称和颁奖机构
+- 如果无获奖,填"未检索到获奖信息"
+
+### 9. caseType(案例类型)
+- 必须标清楚具体规划类型(如城市更新规划、乡村设计规划、生态城市规划、保护规划等,以实际类型为准)
+- 如果是导则/条例,要说明类型
+- 同时说明项目的建设实施状态(如持续实施中、持续建设中、已建成并持续运营中)
+- 示例:"城市更新规划-已建成并持续运营中"
+
+### 10. sustainabilityTargets(可持续目标)
+从[宜居、智慧、人文、创新、绿色、韧性]中选择1-4个,返回纯字符串数组。
+
+### 11. demonstrationValue(示范意义)
+- 以关键词形式总结3个左右的创新点
+- 每个创新点要具体说明:是否突破了当时的政策制度、组织形式或技术标准
+- 总字数不少于200字
+- 示例:"创新点1:小尺度微更新--突破了传统大拆大建的改造模式..."
+
+### 12. projectIntroduction(项目介绍)
+- 对项目背景进行说明
+- 包括项目背景、历史沿革、区域位置等
+- 不少于300字
+
+### 13. constructionPhase(建设阶段)
+- 必须体现阶段性特点
+- 每个阶段要说明时间段、做了什么事、完成了什么目标
+- 总字数不少于450字
+- 返回纯字符串数组,每条≥80字
+- 示例:["第一阶段(2015-2017):完成现状调研和规划编制,确定了保护与再生相结合的总体策略..."]
+
+### 14. awardEvaluation(项目获奖评价)
+- 必须说明评价者的身份(单位名称)
+- 格式严格为"评价内容--评价者单位"
+- 示例:"该项目在历史街区保护方面具有示范意义--住房和城乡建设部"
+
+### 15. projectInitiatives(项目举措)
+- 是"示范意义"部分的详细阐述
+- 具体解释项目的措施和创新做法
+- 总字数不少于700字
+- 返回纯字符串数组,每条≥80字
+
+### 16. infoSource(信息来源)
+- 中文展示3-5条信息来源
+- 每条格式为"来源网站名称\n网址"
 
 ## 严格规则
-- 只提取原文中真实存在的信息，不编造
-- 用中文
-- 找不到的字段值设为空字符串""
-- 数组字段每条必须是纯字符串，不要返回对象
+- 所有字段必须用中文
+- 只提取原文中真实存在的信息,不编造、不推测
+- 找不到的字段值设为空字符串""(字符串数组设为空数组[])
+- 数组字段每条必须是纯字符串,不要返回对象
 - 忽略网站导航、菜单、登录等非正文内容
 - 返回合法JSON
 
 ## 网页内容
-${content.substring(0, 12000)}`;
+${content.substring(0, 16000)}`;
 
   let extraction: CaseExtraction;
   try {
@@ -538,7 +642,7 @@ ${content.substring(0, 12000)}`;
     };
   }
 
-  // ====== Phase 2：AI 知识补充空字段 ======
+  // ====== Phase 2:AI 知识补充空字段 ======
   const fieldChecks: [string, string][] = [
     ['location', extraction.location],
     ['projectScale', extraction.projectScale],
@@ -551,7 +655,7 @@ ${content.substring(0, 12000)}`;
     ['awardStatus', extraction.awardStatus],
     ['awardEvaluation', extraction.awardEvaluation],
   ];
-  const emptyFields: string[] = fieldChecks.filter(([_, v]) => !v || v.trim().length < 5).map(([f]) => f);
+  const emptyFields: string[] = fieldChecks.filter(([_, v]) => !v || (typeof v === 'string' && v.trim().length < 5)).map(([f]) => f);
   if (extraction.constructionPhase.length === 0) emptyFields.push('constructionPhase');
   if (extraction.projectInitiatives.length === 0) emptyFields.push('projectInitiatives');
   if (extraction.sustainabilityTargets.length === 0) emptyFields.push('sustainabilityTargets');
@@ -559,31 +663,34 @@ ${content.substring(0, 12000)}`;
   if (emptyFields.length > 0) {
     console.log(`[Extract All Fields] Phase 2: AI knowledge fill for ${emptyFields.length} empty fields:`, emptyFields);
 
-    const knowledgePrompt = `你是一名建筑/城市规划领域的专家。以下是项目名称，请用你的专业知识补充信息。
+    const knowledgePrompt = `你是一名建筑/城市规划领域的资深专家,对中国城市规划和建筑案例非常熟悉。以下是项目名称,请用你的专业知识尽可能完整地补充信息。
 
-项目名称：${extraction.caseName || cleanTitle}
+项目名称:${extraction.caseName || cleanTitle}
 
-需要补充的字段：${emptyFields.join('、')}
+需要补充的字段:${emptyFields.join('、')}
 
-## 字段说明
-- location："XX省-XX市-XX区县"格式
-- projectScale：用地面积+规划等级
-- totalInvestment：投资金额
-- participants：委托方、建设方、规划设计方
-- startDate：起止时间
-- caseType：规划类型+建设状态
-- demonstrationValue：关键词+创新点（≥150字）
-- projectIntroduction：项目背景（≥200字）
-- awardStatus：获奖情况
-- awardEvaluation：评价
-- constructionPhase：建设阶段（纯字符串数组）
-- projectInitiatives：项目举措（纯字符串数组）
-- sustainabilityTargets：从[宜居、智慧、人文、创新、绿色、韧性]中选
+## 字段详细说明
+- location:"XX省-XX市-XX区县"格式(必须用"-"分隔)
+- projectScale:如果是规划类项目,说明用地面积和规划等级;如果是导则/条例,说明针对对象或适用范围
+- totalInvestment:具体投资金额(如"总投资约15亿元")
+- participants:委托方、建设方、规划设计方、编制单位(格式:"委托方:XX;规划设计方:XX;编制单位:XX"),所有参与编制的单位都要写全
+- startDate:必须包含开始和结束时间(xxxx年-yyyy年),如果有编制时间也要补充,有上位规划/先行文件的要说明时间
+- endDate:结束时间,如仍在进行则填"持续中"
+- caseType:具体规划类型(如城市更新规划、乡村设计规划、生态城市规划、保护规划等)+建设实施状态(如持续实施中、已建成并持续运营中)
+- demonstrationValue:以关键词形式总结3个左右创新点,每个创新点具体说明是否突破了当时的政策制度、组织形式或技术标准,≥150字
+- projectIntroduction:项目背景说明,包括历史沿革、区域位置等,≥200字
+- awardStatus:具体奖项名称+颁奖机构,如无获奖则填"未检索到获奖信息"
+- awardEvaluation:评价内容+评价者身份(单位),格式"评价内容--评价者单位"
+- constructionPhase:建设阶段详情(纯字符串数组),体现阶段性特点,每个阶段说明时间段+做了什么+完成目标,总字数≥450字
+- projectInitiatives:项目举措详情(纯字符串数组),是示范意义的详细阐述,总字数≥700字
+- sustainabilityTargets:从[宜居、智慧、人文、创新、绿色、韧性]中选1-4个
 
 ## 规则
-- 基于专业知识填写，不确定的留空
+- 基于专业知识填写,不确定的留空
 - 数组字段每条必须是纯字符串
-- 返回合法JSON，只包含你能补充的字段`;
+- 对于知名项目,务必提供准确的参与主体、获奖等信息
+- 所有内容必须使用中文
+- 返回合法JSON,只包含你能补充的字段`;
 
     try {
       const knowledgeResult = await callQwenModel(knowledgePrompt, 3000);
@@ -605,59 +712,130 @@ ${content.substring(0, 12000)}`;
     }
   }
 
-  // ====== Phase 3：补充搜索（仅对仍为空的关键字段） ======
-  const stillEmpty = fieldChecks.filter(([_, v]) => !v || v.trim().length < 5).map(([f]) => f);
-  if (stillEmpty.length > 0 && stillEmpty.length <= 5) {
-    console.log(`[Extract All Fields] Phase 3: Supplementary search for ${stillEmpty.length} fields:`, stillEmpty);
+  // ====== Phase 3: 补充搜索 + 质量循环(最多3轮) ======
+  // 质量检查函数:评估提取结果是否满足最低要求
+  function getQualityIssues(ext: CaseExtraction): string[] {
+    const issues: string[] = [];
+    const requiredFields: [string, string][] = [
+      ['location', ext.location],
+      ['projectScale', ext.projectScale],
+      ['participants', ext.participants],
+      ['startDate', ext.startDate],
+      ['caseType', ext.caseType],
+      ['demonstrationValue', ext.demonstrationValue],
+      ['projectIntroduction', ext.projectIntroduction],
+    ];
+    for (const [field, val] of requiredFields) {
+      if (!val || typeof val !== 'string' || val === '无' || val.trim().length < 5) issues.push(field);
+    }
+    // 字数检查
+    if (ext.projectIntroduction && ext.projectIntroduction !== '无' && ext.projectIntroduction.length < 200) issues.push('projectIntroduction(字数不足)');
+    if (ext.constructionPhase.length === 0 || ext.constructionPhase.join('').length < 200) issues.push('constructionPhase');
+    if (ext.projectInitiatives.length === 0 || ext.projectInitiatives.join('').length < 300) issues.push('projectInitiatives');
+    return issues;
+  }
+
+  const maxRetries = 3;
+  for (let retry = 0; retry < maxRetries; retry++) {
+    const issues = getQualityIssues(extraction);
+    if (issues.length === 0) {
+      console.log(`[Extract All Fields] Quality check passed on attempt ${retry}`);
+      break;
+    }
+    console.log(`[Extract All Fields] Quality loop ${retry + 1}: ${issues.length} issues:`, issues);
 
     try {
+      // 针对性补充搜索
+      const searchTargets = issues.filter(f => !f.includes('字数不足')).slice(0, 3);
       const suppParts: string[] = [];
-      for (const field of stillEmpty) {
+      for (const field of searchTargets) {
         const extra = await supplementarySearch(cleanTitle, field, searchFn);
         if (extra) suppParts.push(extra);
       }
       const suppContent = suppParts.join('\n\n');
 
       if (suppContent.length > 200) {
-        const suppPrompt = `你是一名建筑案例信息提取专家。从以下补充搜索内容中提取指定字段。
+        const suppPrompt = `你是一名建筑/城市规划案例信息提取专家。从以下补充搜索内容中提取指定字段。
 
-需要提取的字段：${stillEmpty.join('、')}
+需要提取的字段:${issues.join('、')}
+
+## 字段要求
+- projectScale:如果是规划类项目,说明用地面积+规划等级;如果是导则/条例,说明针对对象或适用范围
+- participants:委托方、建设方、规划设计方、编制单位(所有参与编制的单位都要写全)
+- startDate:包含开始和结束时间(xxxx年-yyyy年),补充编制时间和上位规划/先行文件时间
+- caseType:具体规划类型+建设实施状态
+- demonstrationValue:3个创新点关键词+具体解释(是否突破政策/组织/技术),≥200字
+- projectIntroduction:项目背景,≥300字
+- constructionPhase:阶段性的建设详情(纯字符串数组,每条≥80字),总字数≥450字
+- projectInitiatives:项目措施和创新(纯字符串数组,每条≥80字),总字数≥700字
 
 ## 规则
 - 只提取原文真实信息
+- 所有内容使用中文
 - 找不到的留空
+- 数组字段每条必须是纯字符串
 - 返回合法JSON
 
 ## 补充内容
-${suppContent.substring(0, 8000)}`;
+${suppContent.substring(0, 10000)}`;
 
-        const suppResult = await callQwenModel(suppPrompt, 2000);
-        for (const field of stillEmpty) {
-          const val = suppResult[field];
-          if (val && typeof val === 'string' && val.trim().length >= 5) {
-            (extraction as any)[field] = val;
+        const suppResult = await callQwenModel(suppPrompt, 4000);
+        for (const field of issues) {
+          const cleanField = field.replace('(字数不足)', '');
+          const val = suppResult[cleanField];
+          if (!val) continue;
+          if (Array.isArray(val) && val.length > 0) {
+            const safeArr = safeStringArray(val);
+            const existing = (extraction as any)[cleanField];
+            // 如果新内容比旧内容更长/更多,才替换
+            if (Array.isArray(existing)) {
+              if (safeArr.join('').length > existing.join('').length) {
+                (extraction as any)[cleanField] = safeArr;
+              }
+            } else if (safeArr.length > 0) {
+              (extraction as any)[cleanField] = safeArr;
+            }
+          } else if (typeof val === 'string' && val.trim().length >= 5) {
+            const existing = (extraction as any)[cleanField];
+            // 如果新内容比旧内容更长,才替换
+            if (!existing || existing === '无' || val.length > existing.length) {
+              (extraction as any)[cleanField] = val;
+            }
           }
         }
-        extraction.extractionSource = '批量AI提取+知识补充+补充搜索';
+        extraction.extractionSource = retry === 0 ? '批量AI提取+知识补充+补充搜索' : `批量AI提取+知识补充+补充搜索(${retry + 1}轮)`;
       }
     } catch (error: any) {
-      console.error('[Extract All Fields] Phase 3 failed:', error.message);
+      console.error(`[Extract All Fields] Quality loop ${retry + 1} failed:`, error.message);
     }
   }
 
-  // ====== 最终填充：确保无空白字段 ======
+  // ====== 最终填充: 确保无空白字段 ======
   const defaults: Record<string, string> = {
-    location: '无', projectScale: '无', totalInvestment: '无', participants: '无',
-    startDate: '无', awardStatus: '未检索到获奖信息', caseType: '无',
-    demonstrationValue: '无', projectIntroduction: '无', awardEvaluation: '无',
+    location: '未检索到区位信息', projectScale: '未检索到规模信息', totalInvestment: '未检索到投资信息',
+    participants: '未检索到参与主体信息', startDate: '未检索到时间信息', awardStatus: '未检索到获奖信息',
+    caseType: '未检索到类型信息', demonstrationValue: '未检索到示范意义',
+    projectIntroduction: '未检索到项目介绍', awardEvaluation: '未检索到获奖评价',
   };
   for (const [field, defaultVal] of Object.entries(defaults)) {
-    if (!(extraction as any)[field] || (extraction as any)[field].trim().length < 2) {
+    const currentVal = (extraction as any)[field];
+    if (!currentVal || (typeof currentVal === 'string' && currentVal.trim().length < 2)) {
       (extraction as any)[field] = defaultVal;
     }
   }
+  // 确保数组字段不为空
+  if (extraction.constructionPhase.length === 0) {
+    extraction.constructionPhase = ['未检索到建设阶段信息'];
+  }
+  if (extraction.projectInitiatives.length === 0) {
+    extraction.projectInitiatives = ['未检索到项目举措信息'];
+  }
+  if (extraction.sustainabilityTargets.length === 0) {
+    extraction.sustainabilityTargets = ['宜居'];
+  }
 
-  // 提取图片
+  // 提取图片(多策略)
+  // 策略1: 从页面内容中提取图片 URL
   const imagePatterns = [
     /https?:\/\/[^\s"']+?\.(?:jpg|jpeg|png|gif|webp|bmp)(?:[^\s"']*)/gi,
   ];
@@ -668,6 +846,18 @@ ${suppContent.substring(0, 8000)}`;
     }
   }
 
+  // 策略2: 过滤掉小图标/LOGO类图片
+  extraction.caseImages = [...new Set(extraction.caseImages)].filter(img => {
+    if (!img) return false;
+    // 过滤掉常见小图标
+    if (/icon|logo|avatar|favicon|banner|ad[sx]?/i.test(img)) return false;
+    // 过滤掉 base64 data URL
+    if (img.startsWith('data:')) return false;
+    // 过滤掉太短的路径(通常是图标)
+    if (img.length < 30) return false;
+    return true;
+  }).slice(0, 8);
+
   // 评估质量
   extraction.dataQuality = assessDataQuality(extraction);
   console.log('[Extract All Fields] Final extraction complete, quality:', extraction.dataQuality);
@@ -676,6 +866,9 @@ ${suppContent.substring(0, 8000)}`;
 }
 
 function assessDataQuality(extraction: CaseExtraction): string {
+  const defaultValues = ['无', '未检索到', '未检索到获奖信息', '未检索到'];
+  const isFilled = (v: string) => v && v.length > 5 && !defaultValues.some(d => v.startsWith(d));
+
   const filledFields = [
     extraction.location,
     extraction.projectScale,
@@ -686,24 +879,27 @@ function assessDataQuality(extraction: CaseExtraction): string {
     extraction.caseType,
     extraction.projectIntroduction,
     extraction.demonstrationValue,
-  ].filter(v => v && v.length > 0 && !v.startsWith('经多轮') && !v.startsWith('未')).length;
+  ].filter(v => isFilled(v)).length;
 
-  if (filledFields >= 7) {
-    return '高（多字段已提取）';
-  } else if (filledFields >= 3) {
-    return '中（部分字段已提取）';
-  } else {
-    return '低（信息较少）';
-  }
+  const textFields = [
+    extraction.projectIntroduction.length >= 300 ? 1 : 0,
+    extraction.constructionPhase.join('').length >= 450 ? 1 : 0,
+    extraction.projectInitiatives.join('').length >= 700 ? 1 : 0,
+    extraction.demonstrationValue.length >= 200 ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  if (filledFields >= 7 && textFields >= 3) return '高（多字段已提取，字数达标）';
+  if (filledFields >= 5 && textFields >= 2) return '中（部分字段已提取）';
+  return '低（信息较少）';
 }
 
 // ==================== POST Handler ====================
 
 export async function POST(request: NextRequest) {
   try {
-    const { q, urls, max_results = 1, engine = 'baidu' } = await request.json();
+    const { q, urls, max_results = 1, engine = 'baidu', snippet = '' } = await request.json();
 
-    // 模式 1：URL 输入模式（用户直接提供 URL）
+    // 模式 1:URL 输入模式(用户直接提供 URL)
     if (urls && Array.isArray(urls) && urls.length > 0) {
       console.log(`[Smart Search] URL Mode: ${urls.length} URLs provided`);
 
@@ -712,7 +908,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Smart Search] Fetched contents for ${contentMap.size} pages`);
 
       if (contentMap.size === 0) {
-        throw new Error('无法爬取任何提供的 URL，请检查 URL 是否正确');
+        throw new Error('无法爬取任何提供的 URL,请检查 URL 是否正确');
       }
 
       const mergedContent = Array.from(contentMap.entries())
@@ -720,9 +916,12 @@ export async function POST(request: NextRequest) {
         .filter(item => item.length > 100)
         .join('\n\n');
 
+      // 如果有前端传来的 snippet，也合并进去
+      const contentWithSnippet = snippet ? `=== 搜索摘要 ===\n${snippet}\n\n${mergedContent}` : mergedContent;
+
       const firstUrl = urls[0];
       const caseExtraction = await extractAllFields(
-        mergedContent,
+        contentWithSnippet,
         '自定义案例',
         urls,
         async (query) => {
@@ -730,7 +929,7 @@ export async function POST(request: NextRequest) {
         }
       );
 
-      caseExtraction.dataQuality = contentMap.size > 0 ? '高（多来源信息补全）' : '中（单来源）';
+      caseExtraction.dataQuality = contentMap.size > 0 ? '高(多来源信息补全)' : '中(单来源)';
 
       console.log('[Smart Search] All extraction completed!');
 
@@ -741,14 +940,14 @@ export async function POST(request: NextRequest) {
         case_extraction: caseExtraction,
         metadata: {
           timestamp: new Date().toISOString(),
-          extraction_mode: '全字段 AI 提取版（多轮搜索）',
+          extraction_mode: '全字段 AI 提取版(多轮搜索)',
           data_quality: caseExtraction.dataQuality,
           source_count: urls.length,
         },
       });
     }
 
-    // 模式 2：搜索模式
+    // 模式 2:搜索模式
     if (!q) {
       return NextResponse.json(
         { success: false, error: 'Missing required parameter: q (for search mode) or urls (for URL mode)' },
@@ -762,7 +961,7 @@ export async function POST(request: NextRequest) {
     // ====== 搜索阶段 ======
     console.log('[Smart Search] Step 1: Searching with Tavily...');
 
-    // 更智能的查询优化：根据查询内容补充关键词
+    // 更智能的查询优化:根据查询内容补充关键词
     let optimizedQuery = q;
     if (!q.includes('案例') && !q.includes('项目') && !q.includes('规划')) {
       optimizedQuery = `${q} 项目案例 规划`;
@@ -787,7 +986,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (rawSearchResults.length === 0) {
-      throw new Error('没有找到相关的搜索结果。请尝试：1) 使用其他搜索词；2) 使用 URL 输入模式直接提供网页链接');
+      throw new Error('没有找到相关的搜索结果。请尝试:1) 使用其他搜索词;2) 使用 URL 输入模式直接提供网页链接');
     }
 
     // ====== 页面爬取阶段 ======
@@ -856,7 +1055,7 @@ export async function POST(request: NextRequest) {
       case_extraction: caseExtraction,
       metadata: {
         timestamp: new Date().toISOString(),
-        extraction_mode: '全字段 AI 提取版（多轮搜索）',
+        extraction_mode: '全字段 AI 提取版(多轮搜索)',
         data_quality: caseExtraction.dataQuality,
         relevance_score: avgRelevanceScore,
       },

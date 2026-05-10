@@ -58,11 +58,32 @@ const DOMAIN_QUALITY: Record<string, number> = {
   'planning.org.cn': 85,
   'china-up.com': 85,
   'architecture.com': 85,
+  // 专业机构/国际组织
+  'worldbank.org': 85,
+  'worldbank.com': 85,
+  'documents1.worldbank.org': 85,
+  'unhabitat.org': 85,
+  'a2architects.com': 80,
+  'thupdi.com': 80,
+  'mayortraining.org': 75,
+  'lifeweek.com.cn': 75,
+  'thepaper.cn': 70,
+  'caup.net': 80,
+  'abbs.com': 75,
+  'far2000.com': 75,
+  'tianjineco-city.com': 80,
+  // 政府/媒体
   'sohu.com': 60,
   'qq.com': 55,
   'sina.com.cn': 55,
   '163.com': 55,
-  'people.com.cn': 60,
+  'people.com.cn': 65,
+  'xinhuanet.com': 65,
+  'gov.cn': 85,
+  // 学术/行业
+  'edu.cn': 70,
+  'wanfangdata.com.cn': 70,
+  'cqvip.com': 65,
   // 低质量泛内容平台
   'zhihu.com': 30,
   'baidu.com': 25,
@@ -72,7 +93,8 @@ const DOMAIN_QUALITY: Record<string, number> = {
   'douyin.com': 10,
   'toutiao.com': 20,
   'xiaohongshu.com': 20,
-};
+  'scribd.com': 15,
+  };
 
 /**
  * 根据域名获取质量评分
@@ -147,24 +169,43 @@ function deduplicateResults(results: SearchResult[]): SearchResult[] {
  * - 标题/摘要与查询关键词匹配度
  */
 function scoreResult(result: SearchResult, query: string): number {
-  let score = result.score || 50;
+  // Tavily 自带 score 范围 0-1，映射到 0-100
+  let tavilyScore = (result.score && result.score <= 1) ? result.score * 100 : (result.score || 40);
+  // 如果 Tavily 没返回有效 score，给一个基础分
+  if (!result.score || result.score === 0) tavilyScore = 40;
 
-  // 域名质量加成
+  // 域名质量评分
   const domainScore = getDomainScore(result.url);
-  score = score * 0.5 + domainScore * 0.5;
 
-  // 标题关键词匹配加成
-  const queryTerms = query.split(/\s+/).filter(t => t.length > 1);
-  const titleLower = result.title.toLowerCase();
-  const snippetLower = result.snippet.toLowerCase();
-  let matchCount = 0;
+  // 标题/摘要关键词匹配
+  const queryTerms = query.replace(/[，。、？]/g, ' ').split(/\s+/).filter(t => t.length > 1);
+  const titleLower = (result.title || '').toLowerCase();
+  const snippetLower = (result.snippet || '').toLowerCase();
+
+  let titleMatch = 0;
+  let snippetMatch = 0;
   for (const term of queryTerms) {
-    if (titleLower.includes(term.toLowerCase())) matchCount += 2;
-    if (snippetLower.includes(term.toLowerCase())) matchCount += 1;
+    const termLower = term.toLowerCase();
+    if (titleLower.includes(termLower)) titleMatch++;
+    if (snippetLower.includes(termLower)) snippetMatch++;
   }
-  score += Math.min(matchCount * 5, 30);
 
-  return Math.round(Math.min(100, score));
+  // 综合评分：Tavily 30% + 域名质量 25% + 标题匹配 25% + 摘要匹配 20%
+  let score = 0;
+  score += tavilyScore * 0.30;
+  score += domainScore * 0.25;
+  score += Math.min(titleMatch * 20, 40) * 0.25 / 10 * 25;   // 标题每匹配一个词 +5，上限 25
+  score += Math.min(snippetMatch * 10, 30) * 0.20 / 10 * 20;  // 摘要每匹配一个词 +2，上限 20
+
+  // 额外加成
+  // 建筑领域关键词出现在标题 → +10
+  const archKeywordsInTitle = ARCHITECTURE_KEYWORDS.filter(kw => titleLower.includes(kw));
+  score += Math.min(archKeywordsInTitle.length * 5, 10);
+
+  // 内容长度加成（snippet > 100字 → +5）
+  if ((result.snippet || '').length > 100) score += 5;
+
+  return Math.round(Math.min(100, Math.max(10, score)));
 }
 
 /**
@@ -179,11 +220,11 @@ function filterAndRankResults(
   return deduped
     // 评分
     .map(r => ({ ...r, relevance_score: scoreResult(r, query) }))
-    // 过滤掉极低分结果（< 20 分）
-    .filter(r => (r.relevance_score ?? 0) >= 20)
+    // 过滤掉极低分结果（< 15 分）
+    .filter(r => (r.relevance_score ?? 0) >= 15)
     // 按分数降序
     .sort((a, b) => (b.relevance_score ?? 0) - (a.relevance_score ?? 0))
-    // 截断
+    // 截断（多取一些给前端展示）
     .slice(0, maxResults);
 }
 
