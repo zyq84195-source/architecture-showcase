@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 // @ts-ignore
 import cases from '@/data/cases.json'
@@ -39,13 +39,15 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
   const [likesCount, setLikesCount] = useState(caseData.likes_count)
   const [isFavorited, setIsFavorited] = useState(false)
 
-  // 检查是否已收藏
-  if (typeof window !== 'undefined') {
-    const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
-    if (favoriteIds.includes(id) && !isFavorited) {
-      setIsFavorited(true)
-    }
-  }
+  // 检查是否已收藏（在 useEffect 中执行，避免 hydration mismatch）
+  React.useEffect(() => {
+    try {
+      const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
+      if (favoriteIds.includes(id)) {
+        setIsFavorited(true)
+      }
+    } catch {}
+  }, [id])
 
   const handleLike = () => {
     setIsLiked(!isLiked)
