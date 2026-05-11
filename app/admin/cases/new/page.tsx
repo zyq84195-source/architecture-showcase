@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import CaseForm from '@/components/admin/CaseForm';
 
 const ADMIN_SESSION_KEY = 'arch_admin_auth';
 
-export default function NewCasePage() {
+function NewCaseForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialData = Object.fromEntries(searchParams);
@@ -27,10 +27,17 @@ export default function NewCasePage() {
     <CaseForm
       initialData={initialData}
       onSubmit={async (data: any) => {
-        // 这里会由父组件处理
         return Promise.resolve();
       }}
       onCancel={() => window.history.back()}
     />
+  );
+}
+
+export default function NewCasePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <NewCaseForm />
+    </Suspense>
   );
 }
