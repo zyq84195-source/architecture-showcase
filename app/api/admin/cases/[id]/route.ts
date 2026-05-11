@@ -8,10 +8,7 @@ export async function GET(
 ) {
   try {
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: '系统未配置，请联系管理员' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: '系统未配置，请联系管理员' }, { status: 500 });
     }
 
     const { id } = await params;
@@ -23,21 +20,12 @@ export async function GET(
       .single();
 
     if (error || !data) {
-      return NextResponse.json(
-        { error: '案例不存在' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: '案例不存在' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message || '获取案例失败',
-        details: error
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '获取案例失败' }, { status: 500 });
   }
 }
 
@@ -48,42 +36,37 @@ export async function PUT(
 ) {
   try {
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: '系统未配置，请联系管理员' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: '系统未配置，请联系管理员' }, { status: 500 });
     }
 
     const { id } = await params;
     const body = await request.json();
 
-    // 验证必填字段
     if (!body.title) {
-      return NextResponse.json(
-        { error: '标题不能为空' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: '标题不能为空' }, { status: 400 });
     }
 
     const updateData: any = {
       title: body.title,
-      description: body.description,
-      category: body.category,
-      architect: body.architect,
-      location: body.location,
-      year: body.year,
-      area: body.area,
-      height: body.height,
-      style: body.style,
-      image_url: body.image_url,
-      is_published: body.is_published !== undefined ? body.is_published : true
+      description: body.description || null,
+      architect: body.architect || null,
+      location: body.location || null,
+      tags: body.tags || null,
+      scale: body.scale || null,
+      investment: body.investment || null,
+      participants: body.participants || null,
+      start_date: body.start_date || null,
+      awards: body.awards || null,
+      case_type: body.case_type || null,
+      sustainable_goal: body.sustainable_goal || null,
+      demo_significance: body.demo_significance || null,
+      images: body.images || null,
+      is_published: body.is_published !== undefined ? body.is_published : true,
     };
 
-    // 只更新提供的字段
+    // Remove null/undefined fields
     Object.keys(updateData).forEach(key => {
-      if (updateData[key] === undefined || updateData[key] === null) {
-        delete updateData[key];
-      }
+      if (updateData[key] === undefined) delete updateData[key];
     });
 
     const { data, error } = await supabaseAdmin
@@ -95,21 +78,9 @@ export async function PUT(
 
     if (error) throw error;
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: '案例更新成功',
-        data
-      }
-    );
+    return NextResponse.json({ success: true, message: '案例更新成功', data });
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message || '更新案例失败',
-        details: error
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '更新案例失败' }, { status: 500 });
   }
 }
 
@@ -120,10 +91,7 @@ export async function DELETE(
 ) {
   try {
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: '系统未配置，请联系管理员' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: '系统未配置，请联系管理员' }, { status: 500 });
     }
 
     const { id } = await params;
@@ -135,19 +103,8 @@ export async function DELETE(
 
     if (error) throw error;
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: '案例删除成功'
-      }
-    );
+    return NextResponse.json({ success: true, message: '案例删除成功' });
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message || '删除案例失败',
-        details: error
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '删除案例失败' }, { status: 500 });
   }
 }
