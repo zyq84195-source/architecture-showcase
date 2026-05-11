@@ -79,7 +79,6 @@ const DOMAIN_QUALITY: Record<string, number> = {
   '163.com': 55,
   'people.com.cn': 65,
   'xinhuanet.com': 65,
-  'gov.cn': 85,
   // 学术/行业
   'edu.cn': 70,
   'wanfangdata.com.cn': 70,
