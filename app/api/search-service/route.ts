@@ -474,6 +474,52 @@ async function searchWithSearx(query: string, max_results: number): Promise<Sear
 
   throw new Error('所有搜索实例均不可用，请稍后重试或使用其他搜索引擎');
 }
+
+/**
+ * Google 搜索（HTML 爬取）
+ */
+async function searchWithGoogle(query: string, max_results: number): Promise<SearchResult[]> {
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Google] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  const response = await fetch(
+    `https://www.google.com/search?q=${encodeURIComponent(enhancedQuery)}&num=${max_results * 2}&hl=zh-CN`,
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Google search error: ${response.status}`);
+  }
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+  const results: SearchResult[] = [];
+
+  // Google 搜索结果选择器
+  $('#search .g, #rso .g').each((i: number, el: any) => {
+    if (results.length >= max_results * 2) return false;
+
+    const titleEl = $(el).find('h3');
+    const title = titleEl.text().trim();
+    const linkEl = $(el).find('a').first();
+    const url = linkEl.attr('href') || '';
+    const snippetEl = $(el).find('.VwiC3b, .st, [style*="-webkit-line-clamp"]');
+    const snippet = snippetEl.text().trim().substring(0, 200);
+
+    // 过滤掉空结果和 Google 内部链接
+    if (title && url && !url.includes('google.com') && url.startsWith('http')) {
+      results.push({ title, url, snippet: snippet || '', source: 'google', score: 50 });
+    }
+  });
+
+  console.log(`[Google] Results: ${results.length}`);
+  return results;
+}
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   const enhancedQuery = enhanceQuery(query);
 
@@ -566,7 +612,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'searx'; // 默认用 SearXNG
+    const engine = request.nextUrl.searchParams.get('engine') || 'google'; // 默认用 Google
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -591,6 +637,9 @@ export async function GET(request: NextRequest) {
       case 'bing':
         rawResults = await searchWithBing(q, max_results);
         break;
+      case 'google':
+        rawResults = await searchWithGoogle(q, max_results);
+        break;
       case 'searx':
         rawResults = await searchWithSearx(q, max_results);
         break;
@@ -598,8 +647,8 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 SearXNG
-        rawResults = await searchWithSearx(q, max_results);
+        // 默认使用 Google
+        rawResults = await searchWithGoogle(q, max_results);
     }
 
     if (rawResults.length === 0) {

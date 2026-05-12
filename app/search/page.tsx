@@ -137,7 +137,7 @@ export default function SearchPage() {
 
     try {
       const response = await fetch(
-        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=searx`
+        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=google`
       )
       const data = await response.json()
 
