@@ -335,31 +335,44 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
  */
 async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
   const enhancedQuery = enhanceQuery(query);
+  console.log(`[DuckDuckGo] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  // 使用 DuckDuckGo HTML 版本爬取
   const response = await fetch(
-    `https://api.duckduckgo.com/?q=${encodeURIComponent(enhancedQuery)}&format=json&no_html=1&skip_disambig=0`
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(enhancedQuery)}`,
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    }
   );
 
   if (!response.ok) {
-    throw new Error(`DuckDuckGo API error: ${response.status}`);
+    throw new Error(`DuckDuckGo error: ${response.status}`);
   }
 
-  const data = await response.json();
+  const html = await response.text();
+  const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
-  if (data.RelatedTopics) {
-    for (const topic of data.RelatedTopics) {
-      if (topic.FirstURL && topic.Text) {
-        results.push({
-          title: topic.Text.substring(0, 80),
-          url: topic.FirstURL,
-          snippet: topic.Text.substring(0, 200),
-          source: 'duckduckgo',
-          score: 50,
-        });
-      }
-      if (results.length >= max_results * 2) break;
+  $('.result').each((i: number, el: any) => {
+    if (results.length >= max_results * 2) return false;
+    const titleEl = $(el).find('.result__title a');
+    const snippetEl = $(el).find('.result__snippet');
+    const title = titleEl.text().trim();
+    const url = titleEl.attr('href') || '';
+    const snippet = snippetEl.text().trim();
+
+    if (title && url) {
+      results.push({
+        title: title.substring(0, 100),
+        url,
+        snippet: snippet.substring(0, 200),
+        source: 'duckduckgo',
+        score: 50,
+      });
     }
-  }
+  });
 
   console.log(`[DuckDuckGo] Results: ${results.length}`);
   return results;
@@ -402,6 +415,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Charset': 'utf-8',
     },
   });
 
@@ -409,7 +423,10 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
     throw new Error(`Baidu search error: ${response.status}`);
   }
 
-  const html = await response.text();
+  // 百度可能返回 gzip/非 utf-8 编码，手动解码
+  const buffer = await response.arrayBuffer();
+  const decoder = new TextDecoder('utf-8');
+  const html = decoder.decode(buffer);
   const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
@@ -436,7 +453,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'tavily'; // 默认改为 tavily
+    const engine = request.nextUrl.searchParams.get('engine') || 'baidu'; // 默认改为 baidu（Tavily key 已停用）
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
