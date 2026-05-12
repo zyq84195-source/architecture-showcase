@@ -787,8 +787,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'baidu'; // 默认用百度
-
+    const engine = request.nextUrl.searchParams.get('engine') || 'tavily'; // 默认用 Tavily（质量最高）
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -829,8 +828,8 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用百度
-        rawResults = await searchWithBaidu(q, max_results);
+        // 默认使用 Tavily
+        rawResults = await searchWithTavily(q, max_results);
     }
 
     if (rawResults.length === 0) {
