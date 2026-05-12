@@ -1,34 +1,20 @@
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-import { useEffect, ReactNode } from 'react';
-import { usePathname } from 'next/navigation';
-
-interface AuthGuardProps {
-  children: ReactNode;
-}
+import { ReactNode } from 'react';
 
 // 不需要登录的页面路径
 const PUBLIC_PATHS = ['/auth/login', '/auth/register', '/auth/callback'];
 
-export default function AuthGuard({ children }: AuthGuardProps) {
-  const { user, loading } = useAuth();
-  const pathname = usePathname();
-  const isPublic = PUBLIC_PATHS.some(p => pathname?.startsWith(p));
+export default function AuthGuard({ children }: { children: ReactNode }) {
+  const { user, loading, supabaseAvailable } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !user && !isPublic) {
-      window.location.href = `/auth/login?redirect=${encodeURIComponent(pathname || '/')}`;
-    }
-  }, [user, loading, isPublic, pathname]);
+  // Supabase 未配置 → 直接放行（不做认证）
+  if (!supabaseAvailable) {
+    return <>{children}</>;
+  }
 
-  // 已登录但访问登录页 → 跳转首页
-  useEffect(() => {
-    if (!loading && user && isPublic) {
-      window.location.href = '/';
-    }
-  }, [user, loading, isPublic]);
-
+  // 加载中
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-elegant-gradient">
@@ -40,8 +26,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  if (!user && !isPublic) {
-    return null; // 等待重定向
+  // 未登录 → 客户端重定向到登录页
+  if (!user) {
+    if (typeof window !== 'undefined' && !PUBLIC_PATHS.some(p => window.location.pathname.startsWith(p))) {
+      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+    }
+    return null;
   }
 
   return <>{children}</>;
