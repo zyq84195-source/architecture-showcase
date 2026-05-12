@@ -379,9 +379,47 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
 }
 
 /**
- * Bing 搜索（HTML 爬取，通过本地 web-search API）
+ * Bing 搜索（HTML 爬取）
  */
-async function searchWithLocalService(query: string, engine: string): Promise<SearchResult[]> {
+async function searchWithBing(query: string, max_results: number): Promise<SearchResult[]> {
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Bing] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  const response = await fetch(
+    `https://www.bing.com/search?q=${encodeURIComponent(enhancedQuery)}&count=${max_results * 2}`,
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Bing search error: ${response.status}`);
+  }
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+  const results: SearchResult[] = [];
+
+  $('#b_results > li.b_algo').each((i: number, el: any) => {
+    if (results.length >= max_results * 2) return false;
+
+    const titleEl = $(el).find('h2 a');
+    const title = titleEl.text().trim();
+    const url = titleEl.attr('href') || '';
+    const snippetEl = $(el).find('.b_caption p, .b_lineclamp2');
+    const snippet = snippetEl.text().trim().substring(0, 200);
+
+    if (title && url) {
+      results.push({ title, url, snippet: snippet || '', source: 'bing', score: 50 });
+    }
+  });
+
+  console.log(`[Bing] Results: ${results.length}`);
+  return results;
+}
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   const enhancedQuery = enhanceQuery(query);
 
@@ -474,7 +512,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'baidu'; // 默认改为 baidu（Tavily key 已停用）
+    const engine = request.nextUrl.searchParams.get('engine') || 'bing'; // 默认改为 bing
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -497,14 +535,14 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithDuckDuckGo(q, max_results);
         break;
       case 'bing':
-        rawResults = await searchWithLocalService(q, 'bing');
+        rawResults = await searchWithBing(q, max_results);
         break;
       case 'baidu':
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 Tavily
-        rawResults = await searchWithTavily(q, max_results);
+        // 默认使用 Bing
+        rawResults = await searchWithBing(q, max_results);
     }
 
     if (rawResults.length === 0) {
