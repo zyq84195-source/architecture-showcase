@@ -509,7 +509,50 @@ async function searchWithBraveHtml(query: string, max_results: number): Promise<
 
 // Legacy placeholder
 async function _unused_searchWithLocalService() {}
-  return results;
+
+/**
+ * Brave Web Search API（免费，每月 2000 次）
+ * 注册: https://brave.com/search/api/
+ */
+async function searchWithBraveApi(query: string, max_results: number): Promise<SearchResult[]> {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Brave API] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  // 如果没有 API key，回退到 DuckDuckGo
+  if (!apiKey) {
+    console.log('[Brave API] No API key, falling back to DuckDuckGo');
+    return await searchWithDuckDuckGo(query, max_results);
+  }
+
+  const response = await fetch(
+    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(enhancedQuery)}&count=${max_results * 2}`,
+    {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error(`[Brave API] Error: ${response.status} - ${errText}`);
+    // 回退到 DuckDuckGo
+    return await searchWithDuckDuckGo(query, max_results);
+  }
+
+  const data = await response.json();
+  const webResults = data?.web?.results || [];
+
+  return webResults.slice(0, max_results * 2).map((item: any) => ({
+    title: item.title || '未命名',
+    url: item.url || '',
+    snippet: (item.description || '').substring(0, 200),
+    source: 'brave-api',
+    score: item?.family_friendly ? 60 : 50,
+  }));
 }
 
 /**
@@ -746,7 +789,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'brave'; // 默认用 Brave
+    const engine = request.nextUrl.searchParams.get('engine') || 'brave-api'; // 默认用 Brave Web Search API
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -764,6 +807,9 @@ export async function GET(request: NextRequest) {
     switch (engine.toLowerCase()) {
       case 'tavily':
         rawResults = await searchWithTavily(q, max_results);
+        break;
+      case 'brave-api':
+        rawResults = await searchWithBraveApi(q, max_results);
         break;
       case 'brave':
         rawResults = await searchWithBrave(q, max_results);
@@ -784,8 +830,8 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 Brave
-        rawResults = await searchWithBrave(q, max_results);
+        // 默认使用 Brave API (with DuckDuckGo fallback)
+        rawResults = await searchWithBraveApi(q, max_results);
     }
 
     if (rawResults.length === 0) {
