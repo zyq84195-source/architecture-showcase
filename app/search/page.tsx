@@ -137,7 +137,7 @@ export default function SearchPage() {
 
     try {
       const response = await fetch(
-        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=duckduckgo`
+        `/api/search-service?q=${encodeURIComponent(webSearchTerm)}&engine=brave`
       )
       const data = await response.json()
 

@@ -430,7 +430,85 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
   return results;
 }
 
-  console.log(`[DuckDuckGo] Results: ${results.length}`);
+/**
+ * Brave Search（免费 Web 搜索，无需 API Key）
+ */
+async function searchWithBrave(query: string, max_results: number): Promise<SearchResult[]> {
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[Brave] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  const response = await fetch(
+    `https://search.brave.com/search?q=${encodeURIComponent(enhancedQuery)}&format=json`,
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    // Brave JSON 可能需要不同方式，回退到 HTML
+    return await searchWithBraveHtml(enhancedQuery, max_results);
+  }
+
+  try {
+    const data = await response.json();
+    const webResults = data?.web?.results || data?.results || [];
+    return webResults.slice(0, max_results * 2).map((item: any) => ({
+      title: item.title || '未命名',
+      url: item.url || '',
+      snippet: (item.description || '').substring(0, 200),
+      source: 'brave',
+      score: item?.family_friendly ? 60 : 50,
+    }));
+  } catch {
+    return await searchWithBraveHtml(enhancedQuery, max_results);
+  }
+}
+
+async function searchWithBraveHtml(query: string, max_results: number): Promise<SearchResult[]> {
+  console.log(`[Brave HTML] Fallback to HTML parsing`);
+
+  const response = await fetch(
+    `https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`,
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Brave search error: ${response.status}`);
+  }
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+  const results: SearchResult[] = [];
+
+  // Brave HTML 结果选择器
+  $('#results .snippet, .result-item').each((i: number, el: any) => {
+    if (results.length >= max_results * 2) return false;
+    const titleEl = $(el).find('.title a, a.result-header');
+    const title = titleEl.text().trim();
+    const url = titleEl.attr('href') || '';
+    const snippetEl = $(el).find('.snippet-description, .description');
+    const snippet = snippetEl.text().trim().substring(0, 200);
+
+    if (title && url && url.startsWith('http')) {
+      results.push({ title, url, snippet: snippet || '', source: 'brave', score: 50 });
+    }
+  });
+
+  console.log(`[Brave HTML] Results: ${results.length}`);
+  return results;
+}
+
+// Legacy placeholder
+async function _unused_searchWithLocalService() {}
   return results;
 }
 
@@ -668,7 +746,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'duckduckgo'; // 默认用 DuckDuckGo Lite
+    const engine = request.nextUrl.searchParams.get('engine') || 'brave'; // 默认用 Brave
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -687,6 +765,9 @@ export async function GET(request: NextRequest) {
       case 'tavily':
         rawResults = await searchWithTavily(q, max_results);
         break;
+      case 'brave':
+        rawResults = await searchWithBrave(q, max_results);
+        break;
       case 'duckduckgo':
         rawResults = await searchWithDuckDuckGo(q, max_results);
         break;
@@ -703,8 +784,8 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 DuckDuckGo
-        rawResults = await searchWithDuckDuckGo(q, max_results);
+        // 默认使用 Brave
+        rawResults = await searchWithBrave(q, max_results);
     }
 
     if (rawResults.length === 0) {
