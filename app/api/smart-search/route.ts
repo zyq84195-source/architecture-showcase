@@ -715,101 +715,190 @@ ${content.substring(0, 16000)}`;
     }
   }
 
-  // ====== Phase 3: 补充搜索 + 质量循环(最多3轮) ======
-  // 质量检查函数:评估提取结果是否满足最低要求
-  function getQualityIssues(ext: CaseExtraction): string[] {
-    const issues: string[] = [];
-    const requiredFields: [string, string][] = [
+  // ====== Phase 3: 持续补充搜索直到所有字段填满(最多5轮) ======
+  const emptyMarkers = ['未检索到', '无', '未找到', 'unknown', 'n/a', 'none'];
+  function isEmpty(val: any): boolean {
+    if (!val) return true;
+    if (typeof val === 'string') return val.trim().length < 5 || emptyMarkers.some(m => val.startsWith(m));
+    if (Array.isArray(val)) return val.length === 0 || val.join('').length < 20;
+    return false;
+  }
+
+  function getEmptyFields(ext: CaseExtraction): string[] {
+    const checks: [string, any][] = [
       ['location', ext.location],
       ['projectScale', ext.projectScale],
+      ['totalInvestment', ext.totalInvestment],
       ['participants', ext.participants],
       ['startDate', ext.startDate],
+      ['endDate', ext.endDate],
+      ['awardStatus', ext.awardStatus],
       ['caseType', ext.caseType],
       ['demonstrationValue', ext.demonstrationValue],
       ['projectIntroduction', ext.projectIntroduction],
+      ['constructionPhase', ext.constructionPhase],
+      ['projectInitiatives', ext.projectInitiatives],
+      ['awardEvaluation', ext.awardEvaluation],
     ];
-    for (const [field, val] of requiredFields) {
-      if (!val || typeof val !== 'string' || val === '无' || val.trim().length < 5) issues.push(field);
-    }
-    // 字数检查
-    if (ext.projectIntroduction && ext.projectIntroduction !== '无' && ext.projectIntroduction.length < 200) issues.push('projectIntroduction(字数不足)');
-    if (ext.constructionPhase.length === 0 || ext.constructionPhase.join('').length < 200) issues.push('constructionPhase');
-    if (ext.projectInitiatives.length === 0 || ext.projectInitiatives.join('').length < 300) issues.push('projectInitiatives');
+    return checks.filter(([_, val]) => isEmpty(val)).map(([field]) => field);
+  }
+
+  function getTextDeficientFields(ext: CaseExtraction): string[] {
+    const issues: string[] = [];
+    if (ext.projectIntroduction && ext.projectIntroduction.length < 200) issues.push('projectIntroduction');
+    if (ext.constructionPhase.length === 0 || ext.constructionPhase.join('').length < 300) issues.push('constructionPhase');
+    if (ext.projectInitiatives.length === 0 || ext.projectInitiatives.join('').length < 400) issues.push('projectInitiatives');
+    if (ext.demonstrationValue && ext.demonstrationValue.length < 150) issues.push('demonstrationValue');
     return issues;
   }
 
-  const maxRetries = 3;
-  for (let retry = 0; retry < maxRetries; retry++) {
-    const issues = getQualityIssues(extraction);
-    if (issues.length === 0) {
-      console.log(`[Extract All Fields] Quality check passed on attempt ${retry}`);
+  const MAX_RETRIES = 5;
+  for (let retry = 0; retry < MAX_RETRIES; retry++) {
+    const emptyFields = getEmptyFields(extraction);
+    const deficientFields = getTextDeficientFields(extraction).filter(f => !emptyFields.includes(f));
+    const allIssues = [...emptyFields, ...deficientFields];
+
+    if (allIssues.length === 0) {
+      console.log(`[Phase 3] Round ${retry}: All fields filled! Done.`);
       break;
     }
-    console.log(`[Extract All Fields] Quality loop ${retry + 1}: ${issues.length} issues:`, issues);
+    console.log(`[Phase 3] Round ${retry + 1}: ${emptyFields.length} empty + ${deficientFields.length} deficient fields:`, allIssues);
 
     try {
-      // 针对性补充搜索
-      const searchTargets = issues.filter(f => !f.includes('字数不足')).slice(0, 3);
+      // 每轮处理最多4个缺失字段
+      const targetFields = allIssues.slice(0, 4);
       const suppParts: string[] = [];
-      for (const field of searchTargets) {
+
+      for (const field of targetFields) {
         const extra = await supplementarySearch(cleanTitle, field, searchFn);
-        if (extra) suppParts.push(extra);
-      }
-      const suppContent = suppParts.join('\n\n');
-
-      if (suppContent.length > 200) {
-        const suppPrompt = `你是一名建筑/城市规划案例信息提取专家。从以下补充搜索内容中提取指定字段。
-
-需要提取的字段:${issues.join('、')}
-
-## 字段要求
-- projectScale:如果是规划类项目,说明用地面积+规划等级;如果是导则/条例,说明针对对象或适用范围
-- participants:委托方、建设方、规划设计方、编制单位(所有参与编制的单位都要写全)
-- startDate:包含开始和结束时间(xxxx年-yyyy年),补充编制时间和上位规划/先行文件时间
-- caseType:具体规划类型+建设实施状态
-- demonstrationValue:3个创新点关键词+具体解释(是否突破政策/组织/技术),≥200字
-- projectIntroduction:项目背景,≥300字
-- constructionPhase:阶段性的建设详情(纯字符串数组,每条≥80字),总字数≥450字
-- projectInitiatives:项目措施和创新(纯字符串数组,每条≥80字),总字数≥700字
-
-## 规则
-- 只提取原文真实信息
-- 所有内容使用中文
-- 找不到的留空
-- 数组字段每条必须是纯字符串
-- 返回合法JSON
-
-## 补充内容
-${suppContent.substring(0, 10000)}`;
-
-        const suppResult = await callQwenModel(suppPrompt, 4000);
-        for (const field of issues) {
-          const cleanField = field.replace('(字数不足)', '');
-          const val = suppResult[cleanField];
-          if (!val) continue;
-          if (Array.isArray(val) && val.length > 0) {
-            const safeArr = safeStringArray(val);
-            const existing = (extraction as any)[cleanField];
-            // 如果新内容比旧内容更长/更多,才替换
-            if (Array.isArray(existing)) {
-              if (safeArr.join('').length > existing.join('').length) {
-                (extraction as any)[cleanField] = safeArr;
-              }
-            } else if (safeArr.length > 0) {
-              (extraction as any)[cleanField] = safeArr;
-            }
-          } else if (typeof val === 'string' && val.trim().length >= 5) {
-            const existing = (extraction as any)[cleanField];
-            // 如果新内容比旧内容更长,才替换
-            if (!existing || existing === '无' || val.length > existing.length) {
-              (extraction as any)[cleanField] = val;
+        if (extra && extra.length > 100) suppParts.push(extra);
+        // 如果该字段补充搜索没结果，尝试更广泛的查询
+        if (!extra || extra.length < 100) {
+          const broaderQueries: Record<string, string> = {
+            'totalInvestment': `${cleanTitle} 投资 造价 概算 资金`,
+            'awardStatus': `${cleanTitle} 获奖 评选 表彰 奖项`,
+            'awardEvaluation': `${cleanTitle} 评价 评审 总结`,
+            'endDate': `${cleanTitle} 完工 竣工 验收 交付`,
+          };
+          const altQuery = broaderQueries[field];
+          if (altQuery) {
+            const altResults = await searchFn(altQuery);
+            if (altResults.length > 0) {
+              const urls = altResults.slice(0, 2).map((r: any) => r.url);
+              const altMap = await fetchMultiplePages(urls);
+              const altContent = Array.from(altMap.values()).filter(c => c.length > 100).join('\n\n');
+              if (altContent.length > 100) suppParts.push(altContent);
             }
           }
         }
-        extraction.extractionSource = retry === 0 ? '批量AI提取+知识补充+补充搜索' : `批量AI提取+知识补充+补充搜索(${retry + 1}轮)`;
+      }
+
+      const suppContent = suppParts.join('\n\n');
+      if (suppContent.length < 200) {
+        console.log(`[Phase 3] Round ${retry + 1}: No supplementary content found, skipping`);
+        continue;
+      }
+
+      const suppPrompt = `你是一名建筑/城市规划案例信息提取专家。从以下补充搜索内容中提取指定字段。
+
+需要提取/补充的字段:${targetFields.join('、')}
+
+## 字段要求
+- location:项目所在城市/区/地块,格式"城市-区域"
+- projectScale:用地面积/建筑面积/建筑高度/层数等规模信息
+- totalInvestment:投资金额,含单位(万元/亿元)
+- participants:委托方、建设方、规划设计方、编制单位,用顿号分隔
+- startDate/endDate:开始和结束时间(XXXX年XX月格式)
+- awardStatus:获奖情况(奖项名称+等级+年份)
+- caseType:具体类型(如"居住建筑-已建成")
+- demonstrationValue:3个以上创新点+解释,≥200字
+- projectIntroduction:项目背景、目标、特点,≥300字
+- constructionPhase:阶段性的建设详情(纯字符串数组,每条≥60字)
+- projectInitiatives:项目措施和创新(纯字符串数组,每条≥60字)
+- awardEvaluation:获奖评价或评审意见
+
+## 规则
+- 只提取原文真实信息,不编造
+- 中文回答
+- 找不到的留空字符串
+- 数组字段返回纯字符串数组
+- 返回合法JSON对象
+
+## 补充内容
+${suppContent.substring(0, 12000)}`;
+
+      const suppResult = await callQwenModel(suppPrompt, 4000);
+
+      // 用新结果填充空字段（只填补空/差的字段，不覆盖已有的好内容）
+      for (const field of targetFields) {
+        const val = suppResult[field];
+        if (!val) continue;
+
+        if (Array.isArray(val) && val.length > 0) {
+          const safeArr = safeStringArray(val);
+          const existing = (extraction as any)[field];
+          if (isEmpty(existing)) {
+            (extraction as any)[field] = safeArr;
+          } else if (Array.isArray(existing) && safeArr.join('').length > existing.join('').length) {
+            (extraction as any)[field] = safeArr;
+          }
+        } else if (typeof val === 'string' && val.trim().length >= 5) {
+          const existing = (extraction as any)[field];
+          if (isEmpty(existing)) {
+            (extraction as any)[field] = val;
+          } else if (val.length > (existing?.length || 0)) {
+            (extraction as any)[field] = val;
+          }
+        }
+      }
+
+      extraction.extractionSource = retry === 0
+        ? '批量AI提取+知识补充+补充搜索'
+        : `批量AI提取+知识补充+补充搜索(${retry + 1}轮)`;
+
+      // 如果这轮没改善任何字段，减少重试次数避免无限循环
+      const stillEmpty = getEmptyFields(extraction);
+      if (stillEmpty.length === emptyFields.length && stillEmpty.every(f => emptyFields.includes(f))) {
+        console.log(`[Phase 3] Round ${retry + 1}: No improvement, breaking`);
+        break;
       }
     } catch (error: any) {
-      console.error(`[Extract All Fields] Quality loop ${retry + 1} failed:`, error.message);
+      console.error(`[Phase 3] Round ${retry + 1} failed:`, error.message);
+    }
+  }
+
+  // ====== Phase 4: AI 最终知识兜底 ======
+  // 对仍然为空的核心字段，用 AI 专业知识做最后补充
+  const finalEmpty = getEmptyFields(extraction);
+  const coreFields = ['location', 'projectScale', 'caseType', 'projectIntroduction', 'demonstrationValue'];
+  const needAIFill = finalEmpty.filter(f => coreFields.includes(f));
+
+  if (needAIFill.length > 0) {
+    console.log(`[Phase 4] AI final fill for:`, needAIFill);
+    try {
+      const fillPrompt = `你是一名资深建筑/城市规划专家。根据项目名称"${cleanTitle}"，用你的专业知识补充以下字段。
+仅补充你有把握的内容，不确定的留空。
+
+需要补充:${needAIFill.join('、')}
+
+## 字段要求
+- location:项目所在地(城市-区域)
+- projectScale:规模信息
+- caseType:类型
+- projectIntroduction:简要介绍(≥200字)
+- demonstrationValue:示范意义(≥150字)
+
+返回JSON，只含以上字段。`;
+
+      const fillResult = await callQwenModel(fillPrompt, 2000);
+      for (const field of needAIFill) {
+        const val = fillResult[field];
+        if (val && typeof val === 'string' && val.trim().length >= 5) {
+          (extraction as any)[field] = val;
+        }
+      }
+    } catch (e: any) {
+      console.error('[Phase 4] AI fill failed:', e.message);
     }
   }
 
