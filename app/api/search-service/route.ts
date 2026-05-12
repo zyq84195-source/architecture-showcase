@@ -331,103 +331,127 @@ async function searchWithTavily(query: string, max_results: number): Promise<Sea
 }
 
 /**
- * DuckDuckGo 搜索（免费备选）
+ * DuckDuckGo 搜索（Instant Answer API + HTML 双模式）
  */
 async function searchWithDuckDuckGo(query: string, max_results: number): Promise<SearchResult[]> {
   const enhancedQuery = enhanceQuery(query);
   console.log(`[DuckDuckGo] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
 
-  // DuckDuckGo Lite 版本
-  const params = new URLSearchParams({ q: enhancedQuery });
-  const response = await fetch('https://lite.duckduckgo.com/lite/', {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    },
-    body: params.toString(),
-  });
+  // 模式 1: Instant Answer API（返回 JSON，不会被反爬）
+  try {
+    const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(enhancedQuery)}&format=json&no_html=1&skip_disambig=0&t=architecture_showcase`;
+    const apiResponse = await fetch(apiUrl, {
+      headers: { 'Accept': 'application/json' },
+    });
 
-  if (!response.ok) {
-    throw new Error(`DuckDuckGo error: ${response.status}`);
-  }
+    if (apiResponse.ok) {
+      const data = await apiResponse.json();
+      const results: SearchResult[] = [];
 
-  const html = await response.text();
-  console.log(`[DuckDuckGo] Response length: ${html.length}`);
-
-  const results: SearchResult[] = [];
-
-  // 方法1: 正则匹配 result-link + href
-  const linkRegex = /class='result-link'[^>]*>(.*?)<\/a>/gs;
-  const hrefRegex = /href="([^"]+)"/g;
-
-  // 找所有 result-link 块
-  const blocks: { title: string; url: string }[] = [];
-  const aTags = html.match(/<a[^>]*class='result-link'[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) || [];
-
-  for (const tag of aTags) {
-    const hrefMatch = tag.match(/href="([^"]+)"/);
-    const titleMatch = tag.match(/>([\s\S]*?)<\/a>/);
-    if (hrefMatch && titleMatch) {
-      let url = hrefMatch[1].replace(/&amp;/g, '&');
-      const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
-
-      // DDG redirect URL → 真实 URL
-      if (url.includes('uddg=')) {
-        try {
-          const m = url.match(/uddg=([^&]+)/);
-          if (m) url = decodeURIComponent(m[1]);
-        } catch {}
+      // 主结果（Abstract）
+      if (data.Abstract && data.AbstractURL) {
+        results.push({
+          title: data.Heading || query,
+          url: data.AbstractURL,
+          snippet: (data.Abstract || '').substring(0, 200),
+          source: 'duckduckgo',
+          score: 60,
+        });
       }
 
-      // 过滤 DDG 内部链接和广告
-      if (url && url.startsWith('http') && !url.includes('duckduckgo.com') && !title.includes('Sponsored')) {
-        blocks.push({ title, url });
+      // Related Topics（含 URL 和文本）
+      if (data.RelatedTopics) {
+        for (const topic of data.RelatedTopics) {
+          if (results.length >= max_results * 2) break;
+          if (topic.FirstURL && topic.Text) {
+            results.push({
+              title: topic.Text.substring(0, 100),
+              url: topic.FirstURL,
+              snippet: topic.Text.substring(0, 200),
+              source: 'duckduckgo',
+              score: 50,
+            });
+          }
+          // 嵌套 Topics
+          if (topic.Topics) {
+            for (const sub of topic.Topics) {
+              if (results.length >= max_results * 2) break;
+              if (sub.FirstURL && sub.Text) {
+                results.push({
+                  title: sub.Text.substring(0, 100),
+                  url: sub.FirstURL,
+                  snippet: sub.Text.substring(0, 200),
+                  source: 'duckduckgo',
+                  score: 45,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Results（直接搜索结果）
+      if (data.Results) {
+        for (const r of data.Results) {
+          if (results.length >= max_results * 2) break;
+          if (r.FirstURL && r.Text) {
+            results.push({
+              title: r.Text.replace(/<[^>]+>/g, '').substring(0, 100),
+              url: r.FirstURL,
+              snippet: r.Text.replace(/<[^>]+>/g, '').substring(0, 200),
+              source: 'duckduckgo',
+              score: 55,
+            });
+          }
+        }
+      }
+
+      if (results.length > 0) {
+        console.log(`[DuckDuckGo API] Results: ${results.length}`);
+        return results;
       }
     }
+  } catch (e: any) {
+    console.warn(`[DuckDuckGo API] Failed: ${e.message}`);
   }
 
-  console.log(`[DuckDuckGo] Regex parsed: ${blocks.length} results`);
-
-  // 方法2: 如果正则也没结果，用 cheerio 兜底
-  if (blocks.length === 0) {
-    const $ = cheerio.load(html);
-    $('a').each((_, el) => {
-      const href = $(el).attr('href') || '';
-      const title = $(el).text().trim();
-      if (href.startsWith('http') && !href.includes('duckduckgo.com') && title.length > 10) {
-        blocks.push({ title: title.substring(0, 120), url: href.replace(/&amp;/g, '&') });
+  // 模式 2: HTML 爬取回退（可能被 Vercel 节点限流）
+  try {
+    const params = new URLSearchParams({ q: enhancedQuery });
+    const response = await fetch('https://lite.duckduckgo.com/lite/', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+    const html = await response.text();
+    const aTags = html.match(/<a[^>]*class='result-link'[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) || [];
+    const results: SearchResult[] = [];
+    for (const tag of aTags) {
+      const hrefMatch = tag.match(/href="([^"]+)"/);
+      const titleMatch = tag.match(/>([\s\S]*?)<\/a>/);
+      if (hrefMatch && titleMatch) {
+        let url = hrefMatch[1].replace(/&amp;/g, '&');
+        const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+        if (url.includes('uddg=')) {
+          try { const m = url.match(/uddg=([^&]+)/); if (m) url = decodeURIComponent(m[1]); } catch {}
+        }
+        if (url.startsWith('http') && !url.includes('duckduckgo.com') && !title.includes('Sponsored') && title.length > 3) {
+          results.push({ title: title.substring(0, 120), url, snippet: '', source: 'duckduckgo', score: 50 });
+        }
       }
-    });
-    console.log(`[DuckDuckGo] Cheerio fallback: ${blocks.length} results`);
-  }
-
-  // 去重
-  const seen = new Set<string>();
-  for (const b of blocks) {
-    if (seen.has(b.url)) continue;
-    seen.add(b.url);
-    results.push({
-      title: b.title.substring(0, 120),
-      url: b.url,
-      snippet: '',
-      source: 'duckduckgo',
-      score: 50,
-    });
-    if (results.length >= max_results * 2) break;
-  }
-
-  // 尝试匹配 snippet（在 HTML 中找 result-snippet 文本）
-  const snippets = html.match(/class='result-snippet'>([\s\S]*?)<\/td>/gi) || [];
-  snippets.forEach((s, i) => {
-    if (i < results.length) {
-      results[i].snippet = s.replace(/<[^>]+>/g, '').trim().substring(0, 200);
     }
-  });
+    if (results.length > 0) {
+      console.log(`[DuckDuckGo HTML] Results: ${results.length}`);
+      return results;
+    }
+  } catch (e: any) {
+    console.warn(`[DuckDuckGo HTML] Failed: ${e.message}`);
+  }
 
-  console.log(`[DuckDuckGo] Final: ${results.length} results`);
-  return results;
+  throw new Error('DuckDuckGo 搜索暂不可用，请使用百度引擎');
 }
 
 /**
@@ -764,6 +788,7 @@ export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
     const engine = request.nextUrl.searchParams.get('engine') || 'baidu'; // 默认用百度
+
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
