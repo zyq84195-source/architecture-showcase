@@ -55,17 +55,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchProfile(currentSession.user.id);
       }
       setLoading(false);
+    }).catch(() => {
+      // session 获取失败，直接放行
+      setLoading(false);
     });
 
     // 监听 auth state 变化
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        if (newSession?.user) {
-          await fetchProfile(newSession.user.id);
-        } else {
-          setProfile(null);
+        try {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          if (newSession?.user) {
+            await fetchProfile(newSession.user.id);
+          } else {
+            setProfile(null);
+          }
+        } catch {
+          // 忽略 auth state change 错误
         }
         setLoading(false);
       }

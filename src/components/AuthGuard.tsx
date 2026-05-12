@@ -3,13 +3,20 @@
 import { useAuth } from '@/context/AuthContext';
 import { ReactNode } from 'react';
 
-// 不需要登录的页面路径
 const PUBLIC_PATHS = ['/auth/login', '/auth/register', '/auth/callback'];
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  const { user, loading, supabaseAvailable } = useAuth();
+  let authState;
+  try {
+    authState = useAuth();
+  } catch {
+    // AuthContext 不可用时直接放行
+    return <>{children}</>;
+  }
 
-  // Supabase 未配置 → 直接放行（不做认证）
+  const { user, loading, supabaseAvailable } = authState;
+
+  // Supabase 未配置 → 直接放行
   if (!supabaseAvailable) {
     return <>{children}</>;
   }
@@ -26,12 +33,13 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // 未登录 → 客户端重定向到登录页
-  if (!user) {
-    if (typeof window !== 'undefined' && !PUBLIC_PATHS.some(p => window.location.pathname.startsWith(p))) {
+  // 未登录且不在公开页面 → 重定向
+  if (!user && typeof window !== 'undefined') {
+    const isPublic = PUBLIC_PATHS.some(p => window.location.pathname.startsWith(p));
+    if (!isPublic) {
       window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return null;
     }
-    return null;
   }
 
   return <>{children}</>;
