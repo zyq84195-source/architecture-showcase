@@ -697,26 +697,7 @@ async function searchWithGoogle(query: string, max_results: number): Promise<Sea
   console.log(`[Google] Results: ${results.length}`);
   return results;
 }
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  const enhancedQuery = enhanceQuery(query);
 
-  const response = await fetch(
-    `${baseUrl}/api/web-search?q=${encodeURIComponent(enhancedQuery)}&engine=${engine}`
-  );
-
-  if (!response.ok) {
-    throw new Error(`Local search service error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return (data.data || []).map((item: any) => ({
-    title: item.title || '未命名',
-    url: item.url,
-    snippet: item.snippet || '',
-    source: engine,
-    score: 50,
-  }));
-}
 
 /**
  * 百度搜索（桌面版 + 正确选择器）
