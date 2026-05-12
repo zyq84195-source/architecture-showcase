@@ -277,9 +277,12 @@ function evaluateRelevanceSimple(query: string, searchResult: SearchResult): { r
 
   if (title.includes('[PDF]') || title.includes('[DOC]')) { score -= 10; }
 
-  if (searchResult.score && searchResult.score > 0) {
-    score = Math.round(score * 0.6 + searchResult.score * 0.4);
-  }
+  // Tavily score 范围 0-1，映射到 0-100
+  let tavilyScore = (searchResult.score && searchResult.score <= 1) ? searchResult.score * 100 : (searchResult.score || 40);
+  if (!searchResult.score || searchResult.score === 0) tavilyScore = 40;
+
+  // 综合评分：关键词匹配 60% + Tavily 原始评分 40%
+  score = Math.round(score * 0.6 + tavilyScore * 0.4);
 
   score = Math.min(100, Math.max(0, score));
 
@@ -889,7 +892,8 @@ function assessDataQuality(extraction: CaseExtraction): string {
   ].reduce((a, b) => a + b, 0);
 
   if (filledFields >= 7 && textFields >= 3) return '高（多字段已提取，字数达标）';
-  if (filledFields >= 5 && textFields >= 2) return '中（部分字段已提取）';
+  if (filledFields >= 5 && textFields >= 1) return '中（部分字段已提取）';
+  if (filledFields >= 3) return '中（基础信息已提取）';
   return '低（信息较少）';
 }
 
