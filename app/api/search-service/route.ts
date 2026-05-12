@@ -420,6 +420,60 @@ async function searchWithBing(query: string, max_results: number): Promise<Searc
   console.log(`[Bing] Results: ${results.length}`);
   return results;
 }
+
+/**
+ * SearXNG 搜索（公共实例，免费，JSON API）
+ */
+async function searchWithSearx(query: string, max_results: number): Promise<SearchResult[]> {
+  const enhancedQuery = enhanceQuery(query);
+  console.log(`[SearX] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
+
+  // 多个公共 SearXNG 实例，按优先级尝试
+  const instances = [
+    'https://searx.be',
+    'https://search.sapti.me',
+    'https://searxng.ch',
+    'https://search.bus-hit.me',
+  ];
+
+  for (const baseUrl of instances) {
+    try {
+      const response = await fetch(
+        `${baseUrl}/search?q=${encodeURIComponent(enhancedQuery)}&format=json&language=zh-CN&categories=general&max_results=${max_results * 2}`,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000), // 10秒超时
+        }
+      );
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      const results: SearchResult[] = (data.results || [])
+        .slice(0, max_results * 2)
+        .map((item: any) => ({
+          title: item.title || '未命名',
+          url: item.url || '',
+          snippet: (item.content || '').substring(0, 200),
+          source: 'searx',
+          score: item.score || 50,
+        }));
+
+      if (results.length > 0) {
+        console.log(`[SearX] Instance: ${baseUrl}, Results: ${results.length}`);
+        return results;
+      }
+    } catch {
+      console.warn(`[SearX] Instance ${baseUrl} failed, trying next...`);
+      continue;
+    }
+  }
+
+  throw new Error('所有搜索实例均不可用，请稍后重试或使用其他搜索引擎');
+}
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   const enhancedQuery = enhanceQuery(query);
 
@@ -512,7 +566,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'bing'; // 默认改为 bing
+    const engine = request.nextUrl.searchParams.get('engine') || 'searx'; // 默认用 SearXNG
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -537,12 +591,15 @@ export async function GET(request: NextRequest) {
       case 'bing':
         rawResults = await searchWithBing(q, max_results);
         break;
+      case 'searx':
+        rawResults = await searchWithSearx(q, max_results);
+        break;
       case 'baidu':
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 Bing
-        rawResults = await searchWithBing(q, max_results);
+        // 默认使用 SearXNG
+        rawResults = await searchWithSearx(q, max_results);
     }
 
     if (rawResults.length === 0) {
