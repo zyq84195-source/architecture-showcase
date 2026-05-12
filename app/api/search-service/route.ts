@@ -337,16 +337,17 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
   const enhancedQuery = enhanceQuery(query);
   console.log(`[DuckDuckGo] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
 
-  // 使用 DuckDuckGo Lite 版本（最稳定，返回纯 HTML 表格）
-  const response = await fetch(
-    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(enhancedQuery)}`,
-    {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    }
-  );
+  // DuckDuckGo Lite 版本（POST 方式，结果最可靠）
+  const params = new URLSearchParams({ q: enhancedQuery });
+  const response = await fetch('https://lite.duckduckgo.com/lite/', {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+    body: params.toString(),
+  });
 
   if (!response.ok) {
     throw new Error(`DuckDuckGo error: ${response.status}`);
@@ -356,55 +357,55 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
   const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
-  // DDG Lite 使用表格布局，每条结果占多个 <tr>
-  // 结果链接在 class="result-link" 的 <a> 中
-  $('a.result-link').each((i: number, el: any) => {
+  // DDG Lite: 结果链接在 class='result-link' 的 <a> 中
+  $("a[class='result-link']").each((i: number, el: any) => {
     if (results.length >= max_results * 2) return false;
     const title = $(el).text().trim();
     let url = $(el).attr('href') || '';
 
-    // DDG Lite 的 URL 可能是 redirect URL，提取实际 URL
+    // 跳过广告和 DDG 内部链接
+    if (!url || url.includes('duckduckgo.com') || title.length <= 3) return;
+
+    // DDG 的 URL 可能是 redirect URL，提取实际 URL
     if (url.includes('uddg=')) {
-      const match = url.match(/uddg=([^&]+)/);
-      if (match) url = decodeURIComponent(match[1]);
+      try {
+        const match = url.match(/uddg=([^&]+)/);
+        if (match) url = decodeURIComponent(match[1]);
+      } catch {}
     }
 
-    // snippet 在同一个 <tr> 的下一个 <tr> 中的 class="result-snippet"
-    const row = $(el).closest('tr');
-    const snippetEl = row.next('tr').find('.result-snippet');
-    const snippet = snippetEl.text().trim();
+    // URL 解码 HTML 实体
+    url = url.replace(/&amp;/g, '&');
 
-    if (title && url && url.startsWith('http')) {
+    if (url.startsWith('http')) {
       results.push({
-        title: title.substring(0, 100),
+        title: title.substring(0, 120),
         url,
-        snippet: snippet.substring(0, 200),
+        snippet: '', // snippet 在相邻行，下面补充
         source: 'duckduckgo',
         score: 50,
       });
     }
   });
 
-  // 备用选择器：如果上面的没匹配到，尝试更通用的解析
-  if (results.length === 0) {
-    $('table tr').each((i: number, el: any) => {
-      if (results.length >= max_results * 2) return false;
-      const link = $(el).find('a[href^="http"]').first();
-      const title = link.text().trim();
-      const url = link.attr('href') || '';
-      const snippet = $(el).find('.result-snippet').text().trim();
+  // 尝试提取 snippet：在 result-link 所在 tr 的下一个 tr 中找 result-snippet
+  const linkElements = $("a[class='result-link']");
+  linkElements.each((i: number, el: any) => {
+    if (i >= results.length) return false;
+    const row = $(el).closest('tr');
+    const snippetEl = row.nextAll('tr').find("td[class='result-snippet']").first();
+    const snippet = snippetEl.text().trim();
+    if (snippet && results[i]) {
+      results[i].snippet = snippet.substring(0, 200);
+    }
+  });
 
-      if (title && url && url.startsWith('http') && title.length > 5) {
-        results.push({
-          title: title.substring(0, 100),
-          url,
-          snippet: snippet.substring(0, 200),
-          source: 'duckduckgo',
-          score: 50,
-        });
-      }
-    });
-  }
+  // 去除广告结果（标题含 Sponsored）
+  const filteredResults = results.filter(r => !r.title.includes('Sponsored') && r.url && !r.url.includes('duckduckgo.com'));
+
+  console.log(`[DuckDuckGo] Results: ${filteredResults.length}`);
+  return filteredResults;
+}
 
   console.log(`[DuckDuckGo] Results: ${results.length}`);
   return results;
