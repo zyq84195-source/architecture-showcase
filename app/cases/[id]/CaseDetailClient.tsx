@@ -61,29 +61,32 @@ export default function CaseDetailClient({ params }: CaseDetailPageProps) {
       setLikesCount(found.likes_count)
     }
 
-    const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
-    if (favoriteIds.includes(params.id)) {
-      setIsFavorited(true)
-    }
+    try {
+      const favoriteIds = JSON.parse(localStorage.getItem('favorites') || '[]')
+      if (favoriteIds.includes(params.id)) setIsFavorited(true)
+    } catch {}
 
-    const allComments = JSON.parse(localStorage.getItem(`comments_${params.id}`) || '[]')
-    setComments(allComments)
+    try {
+      const allComments = JSON.parse(localStorage.getItem(`comments_${params.id}`) || '[]')
+      setComments(allComments)
+    } catch {}
 
-    // 检查用户是否已评分
-    const userRatings = JSON.parse(localStorage.getItem('user_ratings') || '{}')
-    if (userRatings[params.id] !== undefined) {
-      setUserRating(userRatings[params.id])
-      setHasRated(true)
-    }
+    try {
+      const userRatings = JSON.parse(localStorage.getItem('user_ratings') || '{}')
+      if (userRatings[params.id] !== undefined) {
+        setUserRating(userRatings[params.id])
+        setHasRated(true)
+      }
+    } catch {}
   }, [params.id])
 
   if (!caseData) {
     return (
       <div className="min-h-screen bg-elegant-gradient flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">📁</div>
-          <h1 className="text-2xl font-bold mb-2">案例未找到</h1>
-          <p className="text-body mb-4">该案例可能已被删除或不存在</p>
+          <div className="text-5xl mb-4 opacity-40">📁</div>
+          <h1 className="text-xl font-semibold mb-2 text-heading">案例未找到</h1>
+          <p className="text-gray-500 text-sm mb-6">该案例可能已被删除或不存在</p>
           <Link href="/">
             <Button className="btn-primary-elegant">返回首页</Button>
           </Link>
@@ -117,51 +120,19 @@ export default function CaseDetailClient({ params }: CaseDetailPageProps) {
 
   const handleRating = (rating: number) => {
     const user = JSON.parse(localStorage.getItem('currentUser') || 'null')
-    if (!user) {
-      alert('请先登录后再评分')
-      return
-    }
-
-    if (hasRated) {
-      alert('您已经评分过了')
-      return
-    }
-
+    if (!user) { alert('请先登录后再评分'); return }
+    if (hasRated) { alert('您已经评分过了'); return }
     setUserRating(rating)
     setHasRated(true)
-
-    // 保存用户评分
     const userRatings = JSON.parse(localStorage.getItem('user_ratings') || '{}')
     userRatings[caseData.id] = rating
     localStorage.setItem('user_ratings', JSON.stringify(userRatings))
-
-    // 更新案例评分统计
-    const allCases = cases.map(c => {
-      if (c.id === caseData.id && c.ratings) {
-        const newCount = c.ratings.count + 1
-        const newTotal = c.ratings.total + rating
-        return {
-          ...c,
-          ratings: {
-            count: newCount,
-            total: newTotal,
-            average: newTotal / newCount
-          }
-        }
-      }
-      return c
-    })
   }
 
   const handleSubmitComment = () => {
     if (!newComment.trim()) return
-
     const user = JSON.parse(localStorage.getItem('currentUser') || 'null')
-    if (!user) {
-      alert('请先登录后再评论')
-      return
-    }
-
+    if (!user) { alert('请先登录后再评论'); return }
     const comment = {
       id: Date.now(),
       user: user.name,
@@ -169,74 +140,74 @@ export default function CaseDetailClient({ params }: CaseDetailPageProps) {
       date: new Date().toISOString(),
       rating: userRating
     }
-
     const allComments = [...comments, comment]
     setComments(allComments)
     localStorage.setItem(`comments_${caseData.id}`, JSON.stringify(allComments))
     setNewComment('')
   }
 
-  const renderStars = (rating: number, interactive: boolean = false) => {
-    return (
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            onClick={() => interactive && handleRating(star)}
-            disabled={!interactive || hasRated}
-            className={`text-2xl transition-all ${
-              interactive
-                ? 'hover:scale-110 cursor-pointer'
-                : 'cursor-default'
-            } ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
-          >
-            ★
-          </button>
-        ))}
-      </div>
-    )
-  }
+  const renderStars = (rating: number, interactive: boolean = false) => (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          onClick={() => interactive && handleRating(star)}
+          disabled={!interactive || hasRated}
+          className={`text-lg transition-all ${interactive ? 'hover:scale-110 cursor-pointer' : 'cursor-default'} ${star <= rating ? 'text-yellow-400' : 'text-gray-200'}`}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  )
 
   const averageRating = caseData.ratings?.average || 0
   const ratingCount = caseData.ratings?.count || 0
 
+  // 信息字段分组
+  const infoFields = [
+    { label: '区位', value: locationText },
+    { label: '主体', value: caseData.participants || caseData.architect },
+    { label: '规模', value: caseData.scale },
+    { label: '投资', value: caseData.investment },
+    { label: '时间', value: caseData.start_date },
+    { label: '类型', value: caseData.case_type },
+  ].filter(f => f.value)
+
+  const hasContent =
+    caseData.description ||
+    caseData.sustainable_goal ||
+    caseData.demo_significance ||
+    raw['建设阶段'] ||
+    raw['项目举措'] ||
+    raw['项目获奖评价']
+
   return (
     <div className="min-h-screen bg-elegant-gradient">
       {/* 导航栏 */}
-      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">A</span>
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14">
+            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">A</span>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">Architecture Showcase</h1>
+              <span className="text-base font-semibold text-heading tracking-tight hidden sm:inline">Architecture Showcase</span>
             </Link>
-            <div className="hidden md:flex items-center space-x-1">
+            <div className="flex items-center gap-1">
               <Link href="/cases">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
                   案例
                 </Button>
               </Link>
               <Link href="/search">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
+                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
                   搜索
                 </Button>
               </Link>
               <Link href="/favorites">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50">
-                  我的收藏
-                </Button>
-              </Link>
-              <div className="w-px h-6 bg-gray-200 mx-2"></div>
-              <Link href="/auth/register">
-                <Button className="btn-primary-elegant">
-                  注册
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button variant="outline" className="btn-secondary-elegant">
-                  登录
+                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
+                  收藏
                 </Button>
               </Link>
             </div>
@@ -244,316 +215,279 @@ export default function CaseDetailClient({ params }: CaseDetailPageProps) {
         </div>
       </nav>
 
-      <main className="container mx-auto px-6 py-12">
-        {/* 案例标题 */}
-        <div className="max-w-4xl mx-auto mb-8">
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <span>案例</span>
-            <span>/</span>
-            <span className="text-blue-600">{caseData.id.replace('excel_', '')}</span>
-          </div>
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-4xl font-bold text-heading mb-4 flex-1">
-              {caseData.title}
-            </h1>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleFavorite}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                  isFavorited
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {isFavorited ? '❤️ 已收藏' : '🤍 收藏'}
-              </button>
-              <button
-                onClick={handleLike}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-medium transition-all ${
-                  isLiked
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <span className={isLiked ? 'text-red-500' : 'text-gray-400'}>
-                  {isLiked ? '❤' : '🤍'}
-                </span>
-                <span>{likesCount}</span>
-              </button>
-            </div>
-          </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+        {/* 面包屑 */}
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-6">
+          <Link href="/" className="hover:text-gray-600 transition-colors">首页</Link>
+          <span>/</span>
+          <Link href="/cases" className="hover:text-gray-600 transition-colors">案例</Link>
+          <span>/</span>
+          <span className="text-gray-600">{caseData.title.slice(0, 12)}…</span>
+        </div>
 
-          {/* 评分统计 */}
-          <div className="elegant-card p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div>
-                  <div className="text-sm text-gray-500 mb-1">平均评分</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-blue-600">
-                      {averageRating > 0 ? averageRating.toFixed(1) : '-'}
-                    </span>
-                    {averageRating > 0 && renderStars(Math.round(averageRating))}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* 左侧：主内容 */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* 主图 */}
+            {mainImage && (
+              <div className="elegant-card overflow-hidden">
+                <img
+                  src={mainImage.url}
+                  alt={mainImage.caption || caseData.title}
+                  className="w-full"
+                />
+                {mainImage.caption && (
+                  <div className="px-5 py-3 text-xs text-gray-500 italic border-t border-gray-100">
+                    {mainImage.caption}
                   </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-500 mb-1">评分人数</div>
-                  <div className="text-lg font-medium text-gray-700">
-                    {ratingCount} 人
+                )}
+              </div>
+            )}
+
+            {/* 项目介绍 */}
+            {caseData.description && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">项目介绍</h2>
+                <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                  {caseData.description}
+                </p>
+              </div>
+            )}
+
+            {/* 建设阶段 */}
+            {raw['建设阶段'] && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">建设阶段</h2>
+                <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                  {raw['建设阶段']}
+                </p>
+              </div>
+            )}
+
+            {/* 项目举措 */}
+            {raw['项目举措'] && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">项目举措</h2>
+                <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                  {raw['项目举措']}
+                </p>
+              </div>
+            )}
+
+            {/* 示范意义 */}
+            {caseData.demo_significance && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">示范意义</h2>
+                <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                  {caseData.demo_significance}
+                </p>
+              </div>
+            )}
+
+            {/* 可持续目标 */}
+            {caseData.sustainable_goal && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">可持续目标</h2>
+                <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                  {caseData.sustainable_goal}
+                </p>
+              </div>
+            )}
+
+            {/* 获奖情况 */}
+            {(caseData.awards || raw['项目获奖评价']) && (
+              <div className="elegant-card p-6">
+                <h2 className="text-lg font-semibold text-heading mb-4">获奖情况</h2>
+                {caseData.awards && (
+                  <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                    {caseData.awards}
+                  </p>
+                )}
+                {raw['项目获奖评价'] && (
+                  <div className={caseData.awards ? 'mt-4 pt-4 border-t border-gray-100' : ''}>
+                    <p className="text-xs text-gray-400 mb-2">获奖评价</p>
+                    <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">
+                      {raw['项目获奖评价']}
+                    </p>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* 附图 */}
+            {detailImages.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-heading mb-4">项目图片</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {detailImages.map((img) => (
+                    <div key={img.id} className="elegant-card overflow-hidden">
+                      <img
+                        src={img.url}
+                        alt={img.caption || `图片 ${img.order}`}
+                        className="w-full"
+                        loading="lazy"
+                      />
+                      {img.caption && (
+                        <div className="px-4 py-2.5 text-xs text-gray-500 border-t border-gray-100">
+                          {img.caption}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div>
-                <div className="text-sm text-gray-500 mb-1">我的评分</div>
+            )}
+          </div>
+
+          {/* 右侧：信息侧边栏 */}
+          <div className="space-y-6">
+            {/* 标题 + 操作 */}
+            <div className="elegant-card p-6">
+              <h1 className="text-xl font-bold text-heading leading-snug mb-4">
+                {caseData.title}
+              </h1>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={handleFavorite}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isFavorited
+                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {isFavorited ? '♥ 已收藏' : '♡ 收藏'}
+                </button>
+                <button
+                  onClick={handleLike}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isLiked
+                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {isLiked ? '♥' : '♡'} {likesCount}
+                </button>
+              </div>
+
+              {/* 评分 */}
+              <div className="flex items-center justify-between py-3 border-t border-gray-100">
+                <div>
+                  <div className="text-2xl font-bold text-heading">
+                    {averageRating > 0 ? averageRating.toFixed(1) : '-'}
+                  </div>
+                  <div className="text-xs text-gray-400">{ratingCount} 人评分</div>
+                </div>
                 <div>
                   {hasRated ? (
-                    <span className="text-lg font-medium text-blue-600">
-                      已评分 {userRating} 星
-                    </span>
+                    <span className="text-xs text-gray-500">已评 {userRating} 星</span>
                   ) : (
                     renderStars(0, true)
                   )}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* 主图 */}
-        {mainImage && (
-          <div className="max-w-6xl mx-auto mb-12">
-            <div className="elegant-card p-4">
-              <img
-                src={mainImage.url}
-                alt={mainImage.caption || caseData.title}
-                className="w-full rounded-lg"
-              />
-              {mainImage.caption && (
-                <p className="text-center text-gray-600 mt-4 text-sm italic">
-                  {mainImage.caption}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 完整详细信息（16个字段） */}
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* 1. 所在区位 */}
-          {caseData.location && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">所在区位</h2>
-              <p className="text-body">{locationText}</p>
-            </div>
-          )}
-
-          {/* 2. 参与主体 */}
-          {caseData.participants && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">参与主体</h2>
-              <p className="text-body whitespace-pre-line">{caseData.participants}</p>
-            </div>
-          )}
-
-          {/* 3. 项目介绍 */}
-          {caseData.description && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">项目介绍</h2>
-              <p className="text-body leading-relaxed whitespace-pre-line">
-                {caseData.description}
-              </p>
-            </div>
-          )}
-
-          {/* 4. 项目规模 */}
-          {caseData.scale && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">项目规模</h2>
-              <p className="text-body whitespace-pre-line">{caseData.scale}</p>
-            </div>
-          )}
-
-          {/* 5. 总投资额 */}
-          {caseData.investment && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">总投资额</h2>
-              <p className="text-body whitespace-pre-line">{caseData.investment}</p>
-            </div>
-          )}
-
-          {/* 6. 起止时间 */}
-          {caseData.start_date && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">起止时间</h2>
-              <p className="text-body whitespace-pre-line">{caseData.start_date}</p>
-            </div>
-          )}
-
-          {/* 7. 获奖情况 */}
-          {caseData.awards && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">获奖情况</h2>
-              <p className="text-body whitespace-pre-line">{caseData.awards}</p>
-            </div>
-          )}
-
-          {/* 8. 案例类型 */}
-          {caseData.case_type && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">案例类型</h2>
-              <p className="text-body whitespace-pre-line">{caseData.case_type}</p>
-            </div>
-          )}
-
-          {/* 9. 可持续目标 */}
-          {caseData.sustainable_goal && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">可持续目标</h2>
-              <p className="text-body whitespace-pre-line">{caseData.sustainable_goal}</p>
-            </div>
-          )}
-
-          {/* 10. 示范意义 */}
-          {caseData.demo_significance && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">示范意义</h2>
-              <p className="text-body whitespace-pre-line">{caseData.demo_significance}</p>
-            </div>
-          )}
-
-          {/* 11. 建设阶段 */}
-          {raw['建设阶段'] && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">建设阶段</h2>
-              <p className="text-body whitespace-pre-line">{raw['建设阶段']}</p>
-            </div>
-          )}
-
-          {/* 12. 项目获奖评价 */}
-          {raw['项目获奖评价'] && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">项目获奖评价</h2>
-              <p className="text-body whitespace-pre-line">{raw['项目获奖评价']}</p>
-            </div>
-          )}
-
-          {/* 13. 项目举措 */}
-          {raw['项目举措'] && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">项目举措</h2>
-              <p className="text-body whitespace-pre-line">{raw['项目举措']}</p>
-            </div>
-          )}
-
-          {/* 14. 信息来源 */}
-          {raw['信息来源'] && (
-            <div className="elegant-card p-6">
-              <h2 className="text-2xl font-bold text-heading mb-4">信息来源</h2>
-              <p className="text-body whitespace-pre-line">{raw['信息来源']}</p>
-            </div>
-          )}
-
-          {/* 15. 附图（所有图片+文字说明） */}
-          {detailImages.length > 0 && (
-            <div>
-              <h2 className="text-2xl font-bold text-heading mb-6">附图</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {detailImages.map((img, index) => (
-                  <div key={img.id} className="elegant-card overflow-hidden animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
-                    <img
-                      src={img.url}
-                      alt={img.caption || `图片 ${img.order}`}
-                      className="w-full"
-                      loading="lazy"
-                    />
-                    {img.caption && (
-                      <div className="p-4 border-t border-gray-100">
-                        <p className="text-sm text-gray-600 italic">{img.caption}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 16. 标签 */}
-          <div>
-            <h2 className="text-2xl font-bold text-heading mb-4">标签</h2>
-            <div className="flex flex-wrap gap-2">
-              {caseData.tags.map((tag: string) => (
-                <span
-                  key={tag}
-                  className="px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-colors"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* 评论区（仅在详情页） */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <h2 className="text-2xl font-bold text-heading mb-6">
-            评论 ({comments.length})
-          </h2>
-
-          {/* 评论表单 */}
-          <div className="elegant-card p-6 mb-6">
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="写下你的评论..."
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-y"
-              rows={4}
-            />
-            <div className="flex justify-end mt-4">
-              <Button
-                onClick={handleSubmitComment}
-                disabled={!newComment.trim()}
-                className="btn-primary-elegant"
-              >
-                发表评论
-              </Button>
-            </div>
-          </div>
-
-          {/* 评论列表 */}
-          <div className="space-y-4">
-            {comments.length > 0 ? (
-              comments.map((comment) => (
-                <div key={comment.id} className="elegant-card p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-heading">{comment.user}</span>
-                      {comment.rating && (
-                        <div className="flex gap-0.5">
-                          {renderStars(comment.rating)}
-                        </div>
-                      )}
+            {/* 基本信息 */}
+            {infoFields.length > 0 && (
+              <div className="elegant-card p-6">
+                <h3 className="text-sm font-semibold text-heading mb-4">基本信息</h3>
+                <div className="space-y-3">
+                  {infoFields.map((f, i) => (
+                    <div key={i} className="flex justify-between gap-4">
+                      <span className="text-xs text-gray-400 flex-shrink-0">{f.label}</span>
+                      <span className="text-sm text-gray-700 text-right">{f.value}</span>
                     </div>
-                    <span className="text-xs text-gray-400">
-                      {new Date(comment.date).toLocaleDateString('zh-CN')}
-                    </span>
-                  </div>
-                  <p className="text-body text-sm">{comment.text}</p>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-body elegant-card p-6">
-                还没有评论，快来发表第一条评论吧！
+                {raw['信息来源'] && (
+                  <>
+                    <div className="border-t border-gray-100 mt-3 pt-3">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-xs text-gray-400">来源</span>
+                        <span className="text-xs text-gray-500 text-right max-w-[200px] line-clamp-2">{raw['信息来源']}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
+
+            {/* 标签 */}
+            {caseData.tags && caseData.tags.length > 0 && (
+              <div className="elegant-card p-6">
+                <h3 className="text-sm font-semibold text-heading mb-3">标签</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {caseData.tags.map((tag: string) => (
+                    <span
+                      key={tag}
+                      className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-md text-xs font-medium"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 评论区 */}
+            <div className="elegant-card p-6">
+              <h3 className="text-sm font-semibold text-heading mb-4">
+                评论 ({comments.length})
+              </h3>
+
+              <div className="mb-4">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="写下你的评论..."
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-gray-300 text-sm resize-none"
+                  rows={3}
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    onClick={handleSubmitComment}
+                    disabled={!newComment.trim()}
+                    className="btn-primary-elegant text-xs h-8 px-4"
+                  >
+                    发表
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {comments.length > 0 ? (
+                  comments.map((comment) => (
+                    <div key={comment.id} className="py-3 border-t border-gray-100 first:border-0 first:pt-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-medium text-heading">{comment.user}</span>
+                        <span className="text-xs text-gray-400">
+                          {new Date(comment.date).toLocaleDateString('zh-CN')}
+                        </span>
+                      </div>
+                      {comment.rating && <div className="mb-1">{renderStars(comment.rating)}</div>}
+                      <p className="text-xs text-gray-600 leading-relaxed">{comment.text}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-400 text-center py-4">暂无评论</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </main>
 
       {/* 页脚 */}
-      <footer className="border-t border-gray-200 mt-16">
-        <div className="container mx-auto px-6 py-8">
-          <div className="text-center text-body text-sm">
-            <p>© 2026 Architecture Showcase. 建筑案例展示平台</p>
+      <footer className="border-t border-gray-200/60 bg-white/40 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-foreground rounded flex items-center justify-center">
+                <span className="text-white text-xs font-bold">A</span>
+              </div>
+              <span className="text-sm text-gray-500">Architecture Showcase</span>
+            </div>
+            <p className="text-xs text-gray-400">© 2026 建筑案例展示平台</p>
           </div>
         </div>
       </footer>

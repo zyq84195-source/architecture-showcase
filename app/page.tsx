@@ -8,48 +8,44 @@ export default function HomePage() {
   const totalLikes = cases.reduce((sum, c: any) => sum + (c.likes_count || 0), 0)
   const totalReviews = cases.reduce((sum, c: any) => sum + (c.reviews_count || 0), 0)
 
+  const stats = [
+    { value: cases.length, label: '精选案例', suffix: '+' },
+    { value: totalImages, label: '高清图片', suffix: '' },
+    { value: totalLikes, label: '总点赞', suffix: '' },
+    { value: totalReviews, label: '总评论', suffix: '' },
+  ]
+
   return (
     <div className="min-h-screen bg-elegant-gradient text-foreground">
-      {/* 优雅导航栏 */}
-      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between h-auto py-3 gap-4 flex-wrap">
-            <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-elegant">
-                <span className="text-white font-bold text-lg">A</span>
+      {/* 导航栏 */}
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14">
+            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">A</span>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">Architecture Showcase</h1>
+              <span className="text-base font-semibold text-heading tracking-tight">Architecture Showcase</span>
             </Link>
-            <div className="flex items-center space-x-1 flex-wrap gap-y-2">
+            <div className="flex items-center gap-1">
               <Link href="/cases">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
+                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
                   案例
                 </Button>
               </Link>
               <Link href="/search">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
+                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
                   搜索
                 </Button>
               </Link>
               <Link href="/smart-search">
-                <Button className="bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-elegant text-sm">
-                  🤖 智能搜索
+                <Button className="bg-foreground text-white hover:bg-gray-800 text-sm h-9 px-3 rounded-lg shadow-none">
+                  AI 搜索
                 </Button>
               </Link>
               <Link href="/admin/cases">
-                <Button variant="ghost" className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 text-sm">
+                <Button variant="ghost" className="text-gray-400 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
                   管理
-                </Button>
-              </Link>
-              <div className="w-px h-6 bg-gray-200 mx-1"></div>
-              <Link href="/auth/register">
-                <Button className="btn-primary-elegant text-sm">
-                  注册
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button variant="outline" className="btn-secondary-elegant text-sm">
-                  登录
                 </Button>
               </Link>
             </div>
@@ -57,112 +53,99 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* Hero 区域 */}
-      <main className="container mx-auto px-6">
-        <div className="py-16 md:py-24">
-          <div className="text-center max-w-4xl mx-auto mb-16 animate-fade-in">
-            {/* 主标题 */}
-            <h1 className="text-5xl md:text-6xl font-bold text-heading mb-6 leading-tight">
+      {/* Hero */}
+      <section className="bg-hero-gradient text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-sm rounded-full text-xs text-gray-300 mb-6 border border-white/10">
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+              精选 {cases.length} 个建筑案例
+            </div>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight tracking-tight mb-5">
               探索优秀
-              <span className="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-                建筑案例
-              </span>
+              <br />
+              <span className="text-blue-400">建筑案例</span>
             </h1>
-
-            {/* 副标题 */}
-            <p className="text-xl md:text-2xl text-body mb-8 max-w-2xl mx-auto">
-              精心收录<span className="font-bold text-blue-600">{cases.length}</span>个优秀建筑案例
-              <span className="block md:inline">，{totalImages}张高清图片</span>，
-              <span className="block md:inline">获取设计灵感与专业参考</span>
+            <p className="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+              从城市更新到文化保护，精心收录国内优秀建筑案例，获取设计灵感与专业参考。
             </p>
-
-            {/* CTA按钮组 */}
-            <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-              <Link href="/cases" className="w-full md:w-auto">
-                <Button className="btn-primary-elegant px-8 py-4 text-lg w-full md:w-auto">
-                  📋 浏览所有案例
-                </Button>
-              </Link>
-              <Link href="/search" className="w-full md:w-auto">
-                <Button variant="outline" className="btn-secondary-elegant px-8 py-4 text-lg w-full md:w-auto">
-                  🔍 搜索案例
-                </Button>
-              </Link>
-              <Link href="/smart-search" className="w-full md:w-auto">
-                <Button className="bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-elegant px-8 py-4 text-lg w-full md:w-auto">
-                  🤖 智能搜索
-                </Button>
-              </Link>
-            </div>
-          </div>
-
-          {/* 统计数据 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            <div className="elegant-card p-6 text-center hover:shadow-elegant-hover transition-all duration-300">
-              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 animate-fade-in">
-                {cases.length}+
-              </div>
-              <div className="text-body">精选案例</div>
-            </div>
-            <div className="elegant-card p-6 text-center hover:shadow-elegant-hover transition-all duration-300">
-              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 animate-fade-in" style={{ animationDelay: '0.1s' }}>
-                {totalImages}
-              </div>
-              <div className="text-body">高清图片</div>
-            </div>
-            <div className="elegant-card p-6 text-center hover:shadow-elegant-hover transition-all duration-300">
-              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-                {totalLikes}
-              </div>
-              <div className="text-body">总点赞数</div>
-            </div>
-            <div className="elegant-card p-6 text-center hover:shadow-elegant-hover transition-all duration-300">
-              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-                {totalReviews}
-              </div>
-              <div className="text-body">总评论数</div>
-            </div>
-          </div>
-
-          {/* 案例展示 */}
-          <div className="mb-8 animate-fade-in" style={{ animationDelay: '0.4s' }}>
-            <h2 className="text-2xl font-bold text-heading mb-6">
-              精选案例
-            </h2>
-          </div>
-          {cases.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {cases.slice(0, 6).map((caseItem: any, index: number) => (
-                <div key={caseItem.id} className="animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
-                  <CaseCard case={caseItem} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📁</div>
-              <p className="text-body text-lg">暂无案例数据</p>
-            </div>
-          )}
-
-          {/* 查看更多按钮 */}
-          {cases.length > 6 && (
-            <div className="text-center mb-12 animate-fade-in">
+            <div className="flex flex-wrap gap-3">
               <Link href="/cases">
-                <Button variant="outline" className="btn-secondary-elegant px-8 py-3 text-lg">
-                  查看全部 {cases.length} 个案例 →
+                <Button className="bg-white text-gray-900 hover:bg-gray-100 h-11 px-6 rounded-xl text-sm font-medium shadow-lg">
+                  浏览所有案例
+                </Button>
+              </Link>
+              <Link href="/smart-search">
+                <Button className="bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 border border-white/20 h-11 px-6 rounded-xl text-sm font-medium">
+                  AI 智能搜索 →
                 </Button>
               </Link>
             </div>
+          </div>
+
+          {/* 统计条 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-14 pt-8 border-t border-white/10">
+            {stats.map((s, i) => (
+              <div key={i}>
+                <div className="text-3xl md:text-4xl font-bold tracking-tight">
+                  {s.value}{s.suffix}
+                </div>
+                <div className="text-sm text-gray-400 mt-1">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 精选案例 */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
+        <div className="flex items-end justify-between mb-10">
+          <div>
+            <h2 className="text-2xl md:text-3xl font-bold text-heading tracking-tight">精选案例</h2>
+            <p className="text-gray-500 mt-2 text-sm">发现最新的优秀建筑项目</p>
+          </div>
+          {cases.length > 6 && (
+            <Link href="/cases" className="text-sm font-medium text-gray-500 hover:text-foreground transition-colors hidden sm:block">
+              查看全部 →
+            </Link>
           )}
         </div>
-      </main>
+
+        {cases.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {cases.slice(0, 6).map((caseItem: any) => (
+              <CaseCard key={caseItem.id} case={caseItem} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">📁</div>
+            <p className="text-gray-500">暂无案例数据</p>
+          </div>
+        )}
+
+        {cases.length > 6 && (
+          <div className="text-center mt-10 sm:hidden">
+            <Link href="/cases">
+              <Button variant="outline" className="rounded-xl text-sm h-10 px-6">
+                查看全部 {cases.length} 个案例 →
+              </Button>
+            </Link>
+          </div>
+        )}
+      </section>
 
       {/* 页脚 */}
-      <footer className="border-t border-gray-200 mt-16">
-        <div className="container mx-auto px-6 py-8">
-          <div className="text-center text-body text-sm">
-            <p>© 2026 Architecture Showcase. 建筑案例展示平台</p>
+      <footer className="border-t border-gray-200/60 bg-white/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-foreground rounded flex items-center justify-center">
+                <span className="text-white text-xs font-bold">A</span>
+              </div>
+              <span className="text-sm text-gray-500">Architecture Showcase</span>
+            </div>
+            <p className="text-xs text-gray-400">© 2026 建筑案例展示平台</p>
           </div>
         </div>
       </footer>

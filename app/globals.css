@@ -1,22 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 @layer base {
   :root {
-    /* 知性气息配色方案 - 深蓝 + 米白 */
-    --background: 250 23% 97%; /* 米白色背景 */
-    --foreground: 222 47% 11%; /* 深蓝灰色文字 */
-    --primary: 222 47% 25%; /* 主色调 - 深蓝 */
-    --primary-foreground: 250 23% 98%;
-    --secondary: 250 20% 90%; /* 次要 - 浅米色 */
-    --secondary-foreground: 222 47% 20%;
-    --muted: 250 20% 93%;
-    --muted-foreground: 215 25% 35%;
-    --accent: 210 40% 50%; /* 强调色 - 蓝色 */
-    --accent-foreground: 250 23% 98%;
-    --border: 250 15% 85%;
-    --input: 250 15% 90%;
-    --ring: 210 40% 50%;
+    /* 高级暖灰 + 深蓝配色 */
+    --background: 220 20% 97%;
+    --foreground: 220 30% 10%;
+    --primary: 220 50% 22%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 220 30% 15%;
+    --muted: 220 12% 94%;
+    --muted-foreground: 220 15% 40%;
+    --accent: 215 55% 42%;
+    --accent-foreground: 210 20% 98%;
+    --border: 220 12% 88%;
+    --input: 220 12% 90%;
+    --ring: 215 55% 42%;
     --radius: 0.75rem;
   }
 }
@@ -27,154 +28,181 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* 知性设计系统 */
+/* ========== 设计系统 ========== */
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+  .text-heading {
+    color: hsl(220 30% 10%);
+  }
+  .text-body {
+    color: hsl(220 10% 40%);
+  }
 }
 
-/* 优雅的卡片样式 */
+/* ========== 卡片系统 ========== */
+
 @layer components {
+  /* 基础卡片 */
   .elegant-card {
-    @apply bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 shadow-sm;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    @apply bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
-  .elegant-card:hover {
-    @apply shadow-elegant-hover border-blue-100;
-    transform: translateY(-4px);
+
+  .elegant-card-hover:hover {
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+    transform: translateY(-6px);
+    border-color: rgba(59,130,246,0.2);
+  }
+
+  /* 毛玻璃卡片 */
+  .glass-card {
+    @apply bg-white/60 backdrop-blur-xl rounded-2xl border border-white/40;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  }
+
+  /* 深色覆盖卡片 */
+  .dark-overlay-card {
+    @apply relative overflow-hidden rounded-2xl;
+  }
+
+  .dark-overlay-card::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
   }
 }
 
-/* 平滑淡入动画 */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* ========== 阴影系统 ========== */
 
-.animate-fade-in {
-  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  animation-fill-mode: both;
-}
-
-/* 知性阴影系统 */
 .shadow-elegant {
-  box-shadow: 0 2px 8px rgba(31, 38, 135, 0.07);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
 }
 
 .shadow-elegant-hover {
-  box-shadow: 0 8px 24px rgba(31, 38, 135, 0.12);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
 }
 
-/* 优雅的按钮样式 */
+.shadow-elegant-xl {
+  box-shadow: 0 16px 48px rgba(0,0,0,0.12);
+}
+
+/* ========== 按钮系统 ========== */
+
 .btn-elegant {
-  @apply px-6 py-2.5 rounded-lg font-medium;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.btn-elegant:hover {
-  transform: scale(1.05);
+  @apply px-6 py-2.5 rounded-xl font-medium transition-all duration-200;
 }
 
 .btn-elegant:active {
-  transform: scale(0.95);
+  transform: scale(0.97);
 }
 
 .btn-primary-elegant {
-  @apply btn-elegant;
-  @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white;
-  @apply shadow-elegant;
+  @apply btn-elegant bg-foreground text-white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .btn-primary-elegant:hover {
-  @apply from-blue-700 to-blue-800;
-  @apply shadow-elegant-hover;
+  @apply bg-gray-800;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transform: translateY(-1px);
 }
 
 .btn-secondary-elegant {
-  @apply btn-elegant;
-  @apply bg-white text-gray-700;
-  @apply border-2 border-gray-200;
+  @apply btn-elegant bg-white text-gray-700 border border-gray-200;
 }
 
 .btn-secondary-elegant:hover {
-  @apply bg-gray-50;
-  @apply border-blue-300;
+  @apply border-gray-300 bg-gray-50;
+  transform: translateY(-1px);
 }
 
-/* 优雅的渐变背景 */
+/* ========== 背景渐变 ========== */
+
 .bg-elegant-gradient {
-  background: linear-gradient(135deg, #fafbfc 0%, #f0f4f8 100%);
+  background: linear-gradient(160deg, #f8f9fb 0%, #eef1f6 50%, #f3f4f8 100%);
 }
 
-/* 平滑滚动 */
+.bg-hero-gradient {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #334155 100%);
+}
+
+.bg-mesh-gradient {
+  background-color: #f8f9fb;
+  background-image:
+    radial-gradient(at 20% 80%, rgba(59,130,246,0.06) 0, transparent 50%),
+    radial-gradient(at 80% 20%, rgba(99,102,241,0.05) 0, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(148,163,184,0.04) 0, transparent 50%);
+}
+
+/* ========== 动画 ========== */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ========== 平滑滚动 ========== */
+
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 80px; /* 为固定导航栏留出空间 */
+  scroll-padding-top: 80px;
 }
 
-/* 自定义滚动条 */
+/* ========== 自定义滚动条 ========== */
+
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #cbd5e1, #94a3b8);
-  border-radius: 4px;
-  transition: background 0.2s;
+  background: rgba(0,0,0,0.15);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #94a3b8, #64748b);
+  background: rgba(0,0,0,0.25);
 }
 
-/* 星级评分动画 */
-@keyframes starRating {
-  0% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
+/* ========== 文本省略 ========== */
 
-.star-rating-animate {
-  animation: starRating 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 加载动画 */
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* 文本省略 */
 .line-clamp-1 {
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -196,31 +224,17 @@ html {
   overflow: hidden;
 }
 
-/* 交互效果 */
-.hover-lift {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* ========== 响应式 ========== */
 
-.hover-lift:hover {
-  transform: translateY(-8px);
-}
-
-/* 响应式优化 */
 @media (max-width: 768px) {
-  .text-5xl {
-    @apply text-3xl;
-  }
-  
-  .text-6xl {
-    @apply text-4xl;
-  }
+  .text-5xl { font-size: 2rem; }
+  .text-6xl { font-size: 2.5rem; }
 }
 
-/* 无障碍 */
+/* ========== 无障碍 ========== */
+
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
