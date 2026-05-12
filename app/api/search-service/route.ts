@@ -404,18 +404,17 @@ async function searchWithLocalService(query: string, engine: string): Promise<Se
 }
 
 /**
- * 百度搜索（HTML 爬取）
+ * 百度搜索（通过百度移动版，确保 UTF-8 编码）
  */
 async function searchWithBaidu(query: string, max_results: number): Promise<SearchResult[]> {
   const enhancedQuery = enhanceQuery(query);
   console.log(`[Baidu] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
 
-  const response = await fetch(`https://www.baidu.com/s?wd=${encodeURIComponent(enhancedQuery)}&ie=utf-8&oe=utf-8`, {
+  const response = await fetch(`https://m.baidu.com/s?word=${encodeURIComponent(enhancedQuery)}&pn=0`, {
     method: 'GET',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Charset': 'utf-8',
     },
   });
 
@@ -423,26 +422,48 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
     throw new Error(`Baidu search error: ${response.status}`);
   }
 
-  // 百度可能返回 gzip/非 utf-8 编码，手动解码
   const buffer = await response.arrayBuffer();
-  const decoder = new TextDecoder('utf-8');
-  const html = decoder.decode(buffer);
+  let html = new TextDecoder('utf-8').decode(buffer);
+
+  // 如果出现乱码特征，尝试 GBK 解码
+  if (html.includes('����') || html.includes('鎴') || html.includes('鎬')) {
+    try {
+      html = new TextDecoder('gbk').decode(buffer);
+    } catch {
+      // GBK 解码失败，保持 UTF-8
+    }
+  }
+
   const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
-  $('.result, .c-container').each((i: number, el: any) => {
+  // 移动版百度结果选择器
+  $('.result, .c-container, [class*="result"]').each((i: number, el: any) => {
     if (results.length >= max_results * 2) return false;
 
-    const titleEl = $(el).find('h3 a, .t a');
-    const title = titleEl.text().trim();
-    const url = titleEl.attr('href');
-    const snippetEl = $(el).find('.c-abstract, .c-span-last, .ec_wise_ad_p0');
-    const snippet = snippetEl.text().trim();
+    const titleEl = $(el).find('h3 a, .t a, [class*="title"] a').first();
+    const title = titleEl.text().trim().replace(/\s+/g, ' ');
+    const url = titleEl.attr('href') || '';
+    const snippetEl = $(el).find('.c-span-last, .c-abstract, [class*="content"], [class*="desc"]');
+    const snippet = snippetEl.text().trim().replace(/\s+/g, ' ').substring(0, 200);
 
     if (title && url && title.length > 2) {
       results.push({ title, url, snippet: snippet || '', source: 'baidu', score: 50 });
     }
   });
+
+  // 如果移动版解析不到，尝试桌面版
+  if (results.length === 0) {
+    $('.result c-container, .c-container').each((i: number, el: any) => {
+      if (results.length >= max_results * 2) return false;
+      const title = $(el).find('h3').text().trim();
+      const href = $(el).find('a').first().attr('href') || '';
+      const snippet = $(el).text().trim().substring(0, 200);
+      if (title && href) {
+        results.push({ title, url: href, snippet, source: 'baidu', score: 50 });
+      }
+    });
+  }
 
   console.log(`[Baidu] Results: ${results.length}`);
   return results;
