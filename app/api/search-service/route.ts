@@ -337,12 +337,13 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
   const enhancedQuery = enhanceQuery(query);
   console.log(`[DuckDuckGo] Query: "${query}" → Enhanced: "${enhancedQuery}"`);
 
-  // 使用 DuckDuckGo HTML 版本爬取
+  // 使用 DuckDuckGo Lite 版本（最稳定，返回纯 HTML 表格）
   const response = await fetch(
-    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(enhancedQuery)}`,
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(enhancedQuery)}`,
     {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     }
   );
@@ -355,15 +356,25 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
   const $ = cheerio.load(html);
   const results: SearchResult[] = [];
 
-  $('.result').each((i: number, el: any) => {
+  // DDG Lite 使用表格布局，每条结果占多个 <tr>
+  // 结果链接在 class="result-link" 的 <a> 中
+  $('a.result-link').each((i: number, el: any) => {
     if (results.length >= max_results * 2) return false;
-    const titleEl = $(el).find('.result__title a');
-    const snippetEl = $(el).find('.result__snippet');
-    const title = titleEl.text().trim();
-    const url = titleEl.attr('href') || '';
+    const title = $(el).text().trim();
+    let url = $(el).attr('href') || '';
+
+    // DDG Lite 的 URL 可能是 redirect URL，提取实际 URL
+    if (url.includes('uddg=')) {
+      const match = url.match(/uddg=([^&]+)/);
+      if (match) url = decodeURIComponent(match[1]);
+    }
+
+    // snippet 在同一个 <tr> 的下一个 <tr> 中的 class="result-snippet"
+    const row = $(el).closest('tr');
+    const snippetEl = row.next('tr').find('.result-snippet');
     const snippet = snippetEl.text().trim();
 
-    if (title && url) {
+    if (title && url && url.startsWith('http')) {
       results.push({
         title: title.substring(0, 100),
         url,
@@ -373,6 +384,27 @@ async function searchWithDuckDuckGo(query: string, max_results: number): Promise
       });
     }
   });
+
+  // 备用选择器：如果上面的没匹配到，尝试更通用的解析
+  if (results.length === 0) {
+    $('table tr').each((i: number, el: any) => {
+      if (results.length >= max_results * 2) return false;
+      const link = $(el).find('a[href^="http"]').first();
+      const title = link.text().trim();
+      const url = link.attr('href') || '';
+      const snippet = $(el).find('.result-snippet').text().trim();
+
+      if (title && url && url.startsWith('http') && title.length > 5) {
+        results.push({
+          title: title.substring(0, 100),
+          url,
+          snippet: snippet.substring(0, 200),
+          source: 'duckduckgo',
+          score: 50,
+        });
+      }
+    });
+  }
 
   console.log(`[DuckDuckGo] Results: ${results.length}`);
   return results;
@@ -612,7 +644,7 @@ async function searchWithBaidu(query: string, max_results: number): Promise<Sear
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q');
-    const engine = request.nextUrl.searchParams.get('engine') || 'google'; // 默认用 Google
+    const engine = request.nextUrl.searchParams.get('engine') || 'duckduckgo'; // 默认用 DuckDuckGo Lite
     const max_results = parseInt(request.nextUrl.searchParams.get('max_results') || '10', 10);
 
     if (!q) {
@@ -647,8 +679,8 @@ export async function GET(request: NextRequest) {
         rawResults = await searchWithBaidu(q, max_results);
         break;
       default:
-        // 默认使用 Google
-        rawResults = await searchWithGoogle(q, max_results);
+        // 默认使用 DuckDuckGo
+        rawResults = await searchWithDuckDuckGo(q, max_results);
     }
 
     if (rawResults.length === 0) {
