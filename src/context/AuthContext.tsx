@@ -11,8 +11,8 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   supabaseAvailable: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: string | null }>;
+  signIn: (username: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (username: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   signInWithOAuth: (provider: 'github' | 'google') => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
@@ -81,22 +81,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (username: string, password: string) => {
     if (!supabase) return { error: '系统未配置' };
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string, username: string) => {
-    if (!supabase) return { error: '系统未配置' };
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { username, display_name: username },
-      },
+    // 通过 API 路由登录（支持用户名查找）
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
     });
-    return { error: error?.message ?? null };
+    const data = await res.json();
+    if (data.error) return { error: data.error };
+    // 手动设置 session 并立即更新状态
+    if (data.data?.session) {
+      await supabase.auth.setSession(data.data.session);
+      setSession(data.data.session);
+      setUser(data.data.session.user);
+      await fetchProfile(data.data.session.user.id);
+    }
+    return { error: null };
+  }, [fetchProfile]);
+
+  const signUp = useCallback(async (username: string, password: string) => {
+    if (!supabase) return { error: '系统未配置' };
+    // 走 API 路由注册（使用 admin API，不发邮件）
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (data.error) return { error: data.error };
+    return { error: null };
   }, []);
 
   const signOut = useCallback(async () => {
