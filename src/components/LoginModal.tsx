@@ -24,12 +24,20 @@ export default function LoginModal({ onClose }: LoginModalProps) {
       return;
     }
     setLoading(true);
-    const { error: err } = await signIn(username.trim(), password);
-    setLoading(false);
-    if (err) {
-      setError(err);
-    } else {
-      onClose();
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 15000)
+      );
+      const { error: err } = await Promise.race([signIn(username.trim(), password), timeout]);
+      setLoading(false);
+      if (err) {
+        setError(err);
+      } else {
+        onClose();
+      }
+    } catch (e: unknown) {
+      setLoading(false);
+      setError(e instanceof Error ? e.message : '网络错误，请重试');
     }
   };
 
@@ -48,15 +56,23 @@ export default function LoginModal({ onClose }: LoginModalProps) {
       return;
     }
     setLoading(true);
-    const { error: err } = await signUp(username.trim(), password);
-    setLoading(false);
-    if (err) {
-      setError(err);
-    } else {
-      setSuccess('注册成功，请登录');
-      setTab('login');
-      setPassword('');
-      setConfirmPassword('');
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('请求超时，请检查网络连接')), 15000)
+      );
+      const { error: err } = await Promise.race([signUp(username.trim(), password), timeout]);
+      setLoading(false);
+      if (err) {
+        setError(err);
+      } else {
+        setSuccess('注册成功，请登录');
+        setTab('login');
+        setPassword('');
+        setConfirmPassword('');
+      }
+    } catch (e: unknown) {
+      setLoading(false);
+      setError(e instanceof Error ? e.message : '网络错误，请重试');
     }
   };
 
