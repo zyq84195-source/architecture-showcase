@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useAuthAction } from '@/hooks/useAuthAction'
 
 interface Case {
   id: string
@@ -29,6 +30,8 @@ interface CaseCardProps {
 
 export default function CaseCard({ case: caseData }: CaseCardProps) {
   const { id, title, images, architect, location, tags } = caseData
+  const router = useRouter()
+  const { requireAuth } = useAuthAction()
 
   const locationText = Array.isArray(location) ? location.join(', ') : location
   const mainImage = images.find(img => img.isMain) || images[0]
@@ -36,6 +39,11 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
   const [isLiked, setIsLiked] = useState(false)
   const [likesCount, setLikesCount] = useState(caseData.likes_count)
   const [isFavorited, setIsFavorited] = useState(false)
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    requireAuth(() => router.push(`/cases/${id}`))
+  }
 
   React.useEffect(() => {
     try {
@@ -69,7 +77,7 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
   }
 
   return (
-    <Link href={`/cases/${id}`} className="group block">
+    <a href={`/cases/${id}`} onClick={handleClick} className="group block cursor-pointer">
       <div className="elegant-card elegant-card-hover overflow-hidden">
         {/* 图片区域 */}
         <div className="aspect-[4/3] bg-gray-100 overflow-hidden relative">
@@ -167,6 +175,6 @@ export default function CaseCard({ case: caseData }: CaseCardProps) {
           </div>
         </div>
       </div>
-    </Link>
+    </a>
   )
 }

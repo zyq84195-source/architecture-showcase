@@ -1,12 +1,95 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/context/AuthContext'
+import { useAuthAction } from '@/hooks/useAuthAction'
+import LoginModal from '@/components/LoginModal'
 import CaseCard from '@/components/case-card'
 import cases from '@/data/cases.json'
 
+function Nav({ onLoginClick }: { onLoginClick: () => void }) {
+  const { user, profile, signOut } = useAuth()
+  const { requireAuth } = useAuthAction()
+  const pathname = usePathname()
+
+  return (
+    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between h-14">
+          <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">A</span>
+            </div>
+            <span className="text-base font-semibold text-heading tracking-tight">Architecture Showcase</span>
+          </Link>
+          <div className="flex items-center gap-1">
+            <Link href="/cases">
+              <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
+                案例
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3"
+              onClick={() => requireAuth(() => { window.location.href = '/search' })}
+            >
+              搜索
+            </Button>
+            <Button
+              className="bg-foreground text-white hover:bg-gray-800 text-sm h-9 px-3 rounded-lg shadow-none"
+              onClick={() => requireAuth(() => { window.location.href = '/smart-search' })}
+            >
+              AI 搜索
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-400 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3"
+              onClick={() => requireAuth(() => { window.location.href = '/admin/cases' })}
+            >
+              管理
+            </Button>
+            {/* 右侧：登录状态 */}
+            <div className="ml-2 pl-2 border-l border-gray-200 flex items-center gap-2">
+              {user ? (
+                <>
+                  <span className="text-sm text-gray-600 max-w-[100px] truncate">
+                    {profile?.username || user.email || '用户'}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    className="text-gray-400 hover:text-red-500 text-sm h-9 px-2"
+                    onClick={signOut}
+                  >
+                    登出
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3"
+                  onClick={onLoginClick}
+                >
+                  登录 / 注册
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
 export default function HomePage() {
-  const totalImages = cases.reduce((sum, c: any) => sum + (c.images?.length || 0), 0)
-  const totalLikes = cases.reduce((sum, c: any) => sum + (c.likes_count || 0), 0)
-  const totalReviews = cases.reduce((sum, c: any) => sum + (c.reviews_count || 0), 0)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const { requireAuth } = useAuthAction()
+
+  const totalImages = cases.reduce((sum: number, c: any) => sum + (c.images?.length || 0), 0)
+  const totalLikes = cases.reduce((sum: number, c: any) => sum + (c.likes_count || 0), 0)
+  const totalReviews = cases.reduce((sum: number, c: any) => sum + (c.reviews_count || 0), 0)
 
   const stats = [
     { value: cases.length, label: '精选案例', suffix: '+' },
@@ -18,40 +101,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-elegant-gradient text-foreground">
       {/* 导航栏 */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-              <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">A</span>
-              </div>
-              <span className="text-base font-semibold text-heading tracking-tight">Architecture Showcase</span>
-            </Link>
-            <div className="flex items-center gap-1">
-              <Link href="/cases">
-                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
-                  案例
-                </Button>
-              </Link>
-              <Link href="/search">
-                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
-                  搜索
-                </Button>
-              </Link>
-              <Link href="/smart-search">
-                <Button className="bg-foreground text-white hover:bg-gray-800 text-sm h-9 px-3 rounded-lg shadow-none">
-                  AI 搜索
-                </Button>
-              </Link>
-              <Link href="/admin/cases">
-                <Button variant="ghost" className="text-gray-400 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
-                  管理
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Nav onLoginClick={() => setShowLoginModal(true)} />
 
       {/* Hero */}
       <section className="bg-hero-gradient text-white">
@@ -75,11 +125,12 @@ export default function HomePage() {
                   浏览所有案例
                 </Button>
               </Link>
-              <Link href="/smart-search">
-                <Button className="bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 border border-white/20 h-11 px-6 rounded-xl text-sm font-medium">
-                  AI 智能搜索 →
-                </Button>
-              </Link>
+              <Button
+                className="bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 border border-white/20 h-11 px-6 rounded-xl text-sm font-medium"
+                onClick={() => requireAuth(() => { window.location.href = '/smart-search' })}
+              >
+                AI 智能搜索 →
+              </Button>
             </div>
           </div>
 
@@ -149,6 +200,11 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      {/* 登录弹窗 */}
+      {showLoginModal && (
+        <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
     </div>
   )
 }

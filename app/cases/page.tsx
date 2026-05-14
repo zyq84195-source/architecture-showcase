@@ -3,15 +3,21 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/context/AuthContext'
+import { useAuthAction } from '@/hooks/useAuthAction'
 import CaseCard from '@/components/case-card'
+import LoginModal from '@/components/LoginModal'
 // @ts-ignore
 import cases from '@/data/cases.json'
 
 export default function CasesPage() {
+  const { user, profile, signOut } = useAuth()
+  const { requireAuth } = useAuthAction()
   const [selectedType, setSelectedType] = useState('')
   const [selectedLocation, setSelectedLocation] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [currentPage, setCurrentPage] = useState(1)
+  const [showLoginModal, setShowLoginModal] = useState(false)
   const itemsPerPage = 9
 
   const filteredCases = cases.filter((caseItem: any) => {
@@ -71,16 +77,43 @@ export default function CasesPage() {
                   案例
                 </Button>
               </Link>
-              <Link href="/search">
-                <Button variant="ghost" className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3">
-                  搜索
-                </Button>
-              </Link>
-              <Link href="/smart-search">
-                <Button className="bg-foreground text-white hover:bg-gray-800 text-sm h-9 px-3 rounded-lg shadow-none">
-                  AI 搜索
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3"
+                onClick={() => requireAuth(() => { window.location.href = '/search' })}
+              >
+                搜索
+              </Button>
+              <Button
+                className="bg-foreground text-white hover:bg-gray-800 text-sm h-9 px-3 rounded-lg shadow-none"
+                onClick={() => requireAuth(() => { window.location.href = '/smart-search' })}
+              >
+                AI 搜索
+              </Button>
+              <div className="ml-2 pl-2 border-l border-gray-200 flex items-center gap-2">
+                {user ? (
+                  <>
+                    <span className="text-sm text-gray-600 max-w-[100px] truncate">
+                      {profile?.username || user.email || '用户'}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      className="text-gray-400 hover:text-red-500 text-sm h-9 px-2"
+                      onClick={signOut}
+                    >
+                      登出
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    className="text-gray-600 hover:text-foreground hover:bg-gray-100 text-sm h-9 px-3"
+                    onClick={() => setShowLoginModal(true)}
+                  >
+                    登录 / 注册
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -214,6 +247,11 @@ export default function CasesPage() {
           </div>
         </div>
       </footer>
+
+      {/* 登录弹窗 */}
+      {showLoginModal && (
+        <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
     </div>
   )
 }

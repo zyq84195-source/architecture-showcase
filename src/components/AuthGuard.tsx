@@ -1,20 +1,32 @@
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import LoginModal from './LoginModal';
 
-const PUBLIC_PATHS = ['/auth/login', '/auth/register', '/auth/callback'];
+// 完全公开的路径前缀
+const FULLY_PUBLIC_PREFIXES = ['/auth', '/about', '/loading', '/not-found'];
+
+function isPublicPath(pathname: string): boolean {
+  // 精确匹配
+  if (pathname === '/' || pathname === '/cases') return true;
+  // 前缀匹配
+  if (FULLY_PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true;
+  return false;
+}
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  let authState;
-  try {
-    authState = useAuth();
-  } catch {
-    // AuthContext 不可用时直接放行
-    return <>{children}</>;
-  }
+  const { user, loading, supabaseAvailable } = useAuth();
+  const pathname = usePathname();
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const { user, loading, supabaseAvailable } = authState;
+  // 监听自定义事件：页面组件请求登录弹窗
+  useEffect(() => {
+    const handler = () => setShowLoginModal(true);
+    window.addEventListener('show-login-modal', handler);
+    return () => window.removeEventListener('show-login-modal', handler);
+  }, []);
 
   // Supabase 未配置 → 直接放行
   if (!supabaseAvailable) {
@@ -33,14 +45,31 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // 未登录且不在公开页面 → 重定向
-  if (!user && typeof window !== 'undefined') {
-    const isPublic = PUBLIC_PATHS.some(p => window.location.pathname.startsWith(p));
-    if (!isPublic) {
-      window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-      return null;
-    }
+  const isPublic = isPublicPath(pathname);
+
+  // 公开页面：直接放行
+  if (isPublic) {
+    return (
+      <>
+        {children}
+        {showLoginModal && (
+          <LoginModal onClose={() => setShowLoginModal(false)} />
+        )}
+      </>
+    );
   }
 
-  return <>{children}</>;
+  // 受保护页面：未登录显示登录弹窗
+  if (!user) {
+    return <LoginModal onClose={() => window.history.back()} />;
+  }
+
+  return (
+    <>
+      {children}
+      {showLoginModal && (
+        <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
+    </>
+  );
 }
