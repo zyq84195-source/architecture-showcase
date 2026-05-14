@@ -9,15 +9,13 @@ import LoginModal from './LoginModal';
 const FULLY_PUBLIC_PREFIXES = ['/auth', '/about', '/loading', '/not-found'];
 
 function isPublicPath(pathname: string): boolean {
-  // 精确匹配
   if (pathname === '/' || pathname === '/cases') return true;
-  // 前缀匹配
   if (FULLY_PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   return false;
 }
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  const { user, loading, supabaseAvailable } = useAuth();
+  const { user, loading } = useAuth();
   const pathname = usePathname();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
@@ -28,12 +26,21 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('show-login-modal', handler);
   }, []);
 
-  // Supabase 未配置 → 直接放行
-  if (!supabaseAvailable) {
-    return <>{children}</>;
+  // 关键改动：公开页面不需要等 loading 完成，直接渲染
+  // 这样首页、案例列表即使 Supabase 慢也能秒开
+  if (isPublicPath(pathname)) {
+    return (
+      <>
+        {children}
+        {showLoginModal && (
+          <LoginModal onClose={() => setShowLoginModal(false)} />
+        )}
+      </>
+    );
   }
 
-  // 加载中
+  // 以下是非公开路径的逻辑
+  // Supabase 初始化中 → 显示 loading
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-elegant-gradient">
@@ -42,20 +49,6 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
           <p className="text-gray-500 text-sm">加载中...</p>
         </div>
       </div>
-    );
-  }
-
-  const isPublic = isPublicPath(pathname);
-
-  // 公开页面：直接放行
-  if (isPublic) {
-    return (
-      <>
-        {children}
-        {showLoginModal && (
-          <LoginModal onClose={() => setShowLoginModal(false)} />
-        )}
-      </>
     );
   }
 
