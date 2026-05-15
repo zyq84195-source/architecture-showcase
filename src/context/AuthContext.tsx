@@ -47,8 +47,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 获取当前 session
+    // 获取当前 session（带超时，防止网络问题导致页面卡死）
+    const sessionTimeout = setTimeout(() => {
+      console.warn('[Auth] getSession 超时，跳过认证');
+      setLoading(false);
+    }, 5000);
+
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      clearTimeout(sessionTimeout);
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       if (currentSession?.user) {
@@ -56,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     }).catch(() => {
+      clearTimeout(sessionTimeout);
       // session 获取失败，直接放行
       setLoading(false);
     });
