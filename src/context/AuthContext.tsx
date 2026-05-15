@@ -122,22 +122,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    try {
-      await supabase.auth.signOut();
-    } catch {
-      // signOut 可能因 token 过期失败，忽略错误继续清理本地状态
-    }
+    // 先清理客户端状态
     setUser(null);
     setProfile(null);
     setSession(null);
-    // 清除 Supabase 本地存储，确保完全登出
+
+    // 清除所有 Supabase 相关的 localStorage（多种 key 格式兜底）
     try {
-      localStorage.removeItem(`sb-${new URL(supabase as any).pathname.replace('/', '')}-auth-token`);
+      const keysToRemove = Object.keys(localStorage).filter(
+        k => k.startsWith('sb-') || k.includes('supabase') || k.includes('-auth-token')
+      );
+      keysToRemove.forEach(k => localStorage.removeItem(k));
     } catch {}
-    // 清除所有 sb- 开头的 localStorage key（兜底）
-    Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
-    window.location.href = '/';
+
+    // 尝试服务端登出（忽略网络错误）
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+    } catch {}
+
+    // 强制刷新页面，确保完全重置
+    window.location.href = '/auth/login';
   }, []);
 
   const signInWithOAuth = useCallback(async (provider: 'github' | 'google') => {

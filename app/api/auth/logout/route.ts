@@ -1,32 +1,19 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
-  if (!supabase) {
-    return NextResponse.json(
-      { error: '系统未配置，请联系管理员' },
-      { status: 500 }
-    );
+  try {
+    const body = await request.json().catch(() => ({}));
+    const userId = body?.userId;
+
+    // 如果传了 userId，用 admin 强制登出该用户的所有 session
+    if (userId && supabaseAdmin) {
+      await supabaseAdmin.auth.admin.signOut(userId);
+    }
+  } catch {
+    // 忽略所有错误，登出不应失败
   }
 
-  const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    return NextResponse.json(
-      {
-        error: '登出失败',
-        details: error.message
-      },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json(
-    {
-      success: true,
-      message: '登出成功'
-    },
-    { status: 200 }
-  );
+  return NextResponse.json({ success: true, message: '登出成功' });
 }
