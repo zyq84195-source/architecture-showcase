@@ -5,10 +5,12 @@ import { ReactNode, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import LoginModal from './LoginModal';
 
-// 无需登录的路径前缀
-const PUBLIC_PREFIXES = ['/auth', '/about', '/loading', '/not-found'];
+// 无需登录即可访问的路径
+const PUBLIC_PATHS = ['/', '/about'];
+const PUBLIC_PREFIXES = ['/auth', '/cases', '/loading', '/not-found'];
 
 function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.includes(pathname)) return true;
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   return false;
 }
@@ -25,7 +27,7 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('show-login-modal', handler);
   }, []);
 
-  // auth 相关页面直接放行（登录、注册、回调）
+  // 公开页面直接渲染（首页、案例浏览、登录注册等）
   if (isPublicPath(pathname)) {
     return (
       <>
@@ -37,7 +39,9 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // 其余所有页面：初始化中显示 loading
+  // 以下为受保护页面（搜索、收藏、管理等）
+
+  // 初始化中 → 显示 loading
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
@@ -49,7 +53,7 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // 未登录 → 显示登录弹窗，不渲染页面内容
+  // 未登录 → 显示登录弹窗，登录成功后自动渲染页面
   if (!user) {
     return <LoginModal onClose={() => window.history.back()} />;
   }
