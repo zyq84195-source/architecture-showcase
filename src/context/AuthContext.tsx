@@ -29,12 +29,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string) => {
     if (!supabase) return;
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (data) setProfile(data as UserProfile);
+    try {
+      const result = await Promise.race([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+      if (result.data) setProfile(result.data as UserProfile);
+    } catch {
+      // profile 获取失败不影响登录
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -90,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (username: string, password: string) => {
     if (!supabase) return { error: '系统未配置' };
-    // 通过 API 路由登录（支持用户名查找）
+    // 通过 API 路由登录（服务端验证，不依赖客户端 Supabase 连接）
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,12 +101,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     if (data.error) return { error: data.error };
-    // 手动设置 session 并立即更新状态
+    // 立即更新客户端状态（不等 Supabase 网络请求）
     if (data.data?.session) {
-      await supabase.auth.setSession(data.data.session);
       setSession(data.data.session);
       setUser(data.data.session.user);
-      await fetchProfile(data.data.session.user.id);
+      // setSession 和 fetchProfile 后台执行，不阻塞登录流程
+      supabase.auth.setSession(data.data.session).catch(() => {});
+      fetchProfile(data.data.session.user.id).catch(() => {});
     }
     return { error: null };
   }, [fetchProfile]);
