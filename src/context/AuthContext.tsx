@@ -123,10 +123,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // signOut 可能因 token 过期失败，忽略错误继续清理本地状态
+    }
     setUser(null);
     setProfile(null);
     setSession(null);
+    // 清除 Supabase 本地存储，确保完全登出
+    try {
+      localStorage.removeItem(`sb-${new URL(supabase as any).pathname.replace('/', '')}-auth-token`);
+    } catch {}
+    // 清除所有 sb- 开头的 localStorage key（兜底）
+    Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
+    window.location.href = '/';
   }, []);
 
   const signInWithOAuth = useCallback(async (provider: 'github' | 'google') => {
